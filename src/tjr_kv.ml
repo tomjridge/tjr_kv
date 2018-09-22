@@ -32,6 +32,7 @@ Link LRU to pcache.
 
 open Tjr_monad
 open Tjr_btree
+open Tjr_btree.Block.BlkN
 
 type kk = int
 type vv = int
@@ -100,8 +101,13 @@ let map_ops =
     ~page_ref_ops
     ~store_ops
 
+let _ = map_ops  
+(* FIXME key should be kk; we need to fix the int marshalling *)
+
 
 (* pcache ----------------------------------------------------------- *)
+
+type pcache_map
 
 module Pcache_impl = struct
 
@@ -109,7 +115,7 @@ module Pcache_impl = struct
   open Tjr_pcache.Persistent_log
 
   (* in-memory kv map ops *)
-  let map_ops : (kk,vv,phant) kvop_map_ops  = failwith "FIXME"
+  let map_ops : (kk,vv,pcache_map) kvop_map_ops  = failwith "FIXME"
 
 
 
@@ -130,9 +136,56 @@ module Pcache_impl = struct
 
 end
 
-let plog_ops : (kk, vv, phant, 'a, phant_passing) Tjr_pcache.Persistent_log.plog_ops =
+let plog_ops : (kk, vv, pcache_map, 'a, phant_passing) Tjr_pcache.Persistent_log.plog_ops =
   Pcache_impl.plog_ops ()
 
 
 
 (* link pcache to B-tree -------------------------------------------- *)
+
+(* The idea is to periodically flush the tail of the pcache to the
+   B-tree. This is essentially a generalization of the ImpFS GOM. *)
+
+module Gom_requires = struct
+  module Bt_blk_id = struct type t = blk_id let int2t i = i let t2int t = t end
+  module Pc_blk_id = Bt_blk_id
+end
+
+
+module Gom' = Tjr_pcache.Gom.Make_gom(Gom_requires)
+
+let gom_mref_ops : ('a,'t) Mref_plus.mref = failwith "FIXME"
+
+let pcache_blocks_limit = 10  (* eg *)
+
+let gom_ops = 
+  Gom'.make_gom_ops
+    ~monad_ops
+    ~btree_ops:map_ops
+    ~pcache_ops:plog_ops 
+    ~pcache_blocks_limit
+    ~gom_mref_ops
+    ~kvop_map_bindings:(failwith "FIXME")
+    ~bt_sync:(failwith "FIXME")
+    ~sync_gom_roots:(failwith "FIXME")
+
+let _ = gom_ops  (* FIXME key seems to be int here rather than kk *)
+                
+
+(* construct LRU and link to Gom ----------------------------------- *)
+
+open Tjr_btree.Cache
+
+(* FIXME for concurrency we need to be very clear that mrefs get updated atomically *)
+let cache_ops : ('k,'v,'t) cache_ops = failwith "FIXME"
+
+let cached_map_ops = 
+  Tjr_btree.Cache.make_cached_map
+    ~monad_ops
+    ~map_ops
+    ~cache_ops
+    @@ fun ~cached_map_ops ~evict_hook -> cached_map_ops
+
+
+(* FIXME evict hook needs to be a parameter to make_cached_map; FIXME
+   also get concurrency correct: LRU is thread safe, but Gom is not *)
