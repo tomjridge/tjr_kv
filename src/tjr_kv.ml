@@ -184,7 +184,9 @@ let cached_map_ops =
     ~monad_ops
     ~map_ops
     ~cache_ops
-    @@ fun ~cached_map_ops ~evict_hook -> cached_map_ops
+    @@ fun ~cached_map_ops ~evict_hook -> 
+    (* NOTE that evict_hook is for testing; we can ignore here *)
+    cached_map_ops
 
 
 (* FIXME evict hook needs to be a parameter to make_cached_map; FIXME

@@ -7,7 +7,7 @@ Libname=Tjr_kv
 
 meta_description="tjr_kv, a key value store"
 
-required_packages="tjr_btree" 
+required_packages="tjr_btree,tjr_pcache" 
 
 # FIXME a bit inefficient if recalculating every time
 mls=`ocamlfind ocamldep -package $required_packages -sort -one-line *.ml`
