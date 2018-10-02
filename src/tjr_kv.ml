@@ -176,7 +176,8 @@ let _ = gom_ops  (* FIXME key seems to be int here rather than kk *)
 
 open Tjr_btree.Cache
 
-(* FIXME for concurrency we need to be very clear that mrefs get updated atomically *)
+(* FIXME for concurrency we need to be very clear that mrefs get
+   updated atomically *)
 let cache_ops : ('k,'v,'t) cache_ops = failwith "FIXME"
 
 let cached_map_ops = 
@@ -184,10 +185,21 @@ let cached_map_ops =
     ~monad_ops
     ~map_ops
     ~cache_ops
-    @@ fun ~cached_map_ops ~evict_hook -> 
-    (* NOTE that evict_hook is for testing; we can ignore here *)
-    cached_map_ops
+  @@ fun ~cached_map_ops ~evict_hook -> 
+  (* NOTE that evict_hook is for testing; we can ignore here *)
+  cached_map_ops
 
 
-(* FIXME evict hook needs to be a parameter to make_cached_map; FIXME
-   also get concurrency correct: LRU is thread safe, but Gom is not *)
+(* FIXME get concurrency correct: LRU is thread safe, but Gom is not.
+   *)
+
+(* API -------------------------------------------------------------- *)
+
+(* At this point, we have a cached_map_ops (insert_many is not
+   efficient FIXME). But we still need to expose the sync operations.
+
+   The operations are: sync a key/value; sync the entire kv map. This
+   needs to be done in the Cache module. Probably worth splitting this
+   out from tjr_btree.
+
+*)
