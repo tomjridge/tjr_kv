@@ -1,15 +1,11 @@
 build:
-	$(MAKE) -C src build
+	dune build @install
 
 install:
-	$(MAKE) -C src install
+	dune install
 
 uninstall:
-	$(MAKE) -C src uninstall
+	dune uninstall
 
 clean:
-	$(MAKE) -C src clean
-#	$(MAKE) -C bin clean
-
-# check:
-# 	$(MAKE) -C bin
+	dune clean

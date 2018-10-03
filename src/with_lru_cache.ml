@@ -111,7 +111,6 @@ type pcache_map
 
 module Pcache_impl = struct
 
-  open Tjr_pcache
   open Tjr_pcache.Persistent_log
 
   (* in-memory kv map ops *)
@@ -174,20 +173,21 @@ let _ = gom_ops  (* FIXME key seems to be int here rather than kk *)
 
 (* construct LRU and link to Gom ----------------------------------- *)
 
-open Tjr_btree.Cache
+open Tjr_lru_cache.Cache
 
 (* FIXME for concurrency we need to be very clear that mrefs get
    updated atomically *)
 let cache_ops : ('k,'v,'t) cache_ops = failwith "FIXME"
 
 let cached_map_ops = 
-  Tjr_btree.Cache.make_cached_map
+  Tjr_lru_cache.Cache.make_cached_map
     ~monad_ops
     ~map_ops
     ~cache_ops
   @@ fun ~cached_map_ops ~evict_hook -> 
   (* NOTE that evict_hook is for testing; we can ignore here *)
   cached_map_ops
+  [@@ocaml.warning "-27"]
 
 
 (* FIXME get concurrency correct: LRU is thread safe, but Gom is not.

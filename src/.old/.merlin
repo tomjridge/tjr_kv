@@ -63,7 +63,6 @@ B /home/tr61/.opam/4.06.1/lib/tjr_btree
 B /home/tr61/.opam/4.06.1/lib/tjr_fs_shared
 B /home/tr61/.opam/4.06.1/lib/tjr_lib
 B /home/tr61/.opam/4.06.1/lib/tjr_lib_core
-B /home/tr61/.opam/4.06.1/lib/tjr_lru_cache
 B /home/tr61/.opam/4.06.1/lib/tjr_monad
 B /home/tr61/.opam/4.06.1/lib/tjr_pcache
 B /home/tr61/.opam/4.06.1/lib/typerep
@@ -136,7 +135,6 @@ S /home/tr61/.opam/4.06.1/lib/tjr_btree
 S /home/tr61/.opam/4.06.1/lib/tjr_fs_shared
 S /home/tr61/.opam/4.06.1/lib/tjr_lib
 S /home/tr61/.opam/4.06.1/lib/tjr_lib_core
-S /home/tr61/.opam/4.06.1/lib/tjr_lru_cache
 S /home/tr61/.opam/4.06.1/lib/tjr_monad
 S /home/tr61/.opam/4.06.1/lib/tjr_pcache
 S /home/tr61/.opam/4.06.1/lib/typerep
@@ -144,5 +142,4 @@ S /home/tr61/.opam/4.06.1/lib/uchar
 S /home/tr61/.opam/4.06.1/lib/variantslib
 S /home/tr61/.opam/4.06.1/lib/yojson
 S .
-FLG -ppx '/tmp/l/git/github/an_imp/tjr_kv/_build/default/.ppx/ppx_deriving_yojson/ppx.exe --as-ppx --cookie '\''library-name="tjr_kv"'\'''
-FLG -open Tjr_kv -w @a-4-29-40-41-42-44-45-48-58-59-60-40 -strict-sequence -strict-formats -short-paths -keep-locs -w -27-32-34-39
+FLG -open Tjr_kv__ -w @a-4-29-40-41-42-44-45-48-58-59-60-40 -strict-sequence -strict-formats -short-paths -keep-locs
