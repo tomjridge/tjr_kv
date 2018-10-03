@@ -145,33 +145,33 @@ let plog_ops : (kk, vv, pcache_map, 'a, phant_passing) Tjr_pcache.Persistent_log
 (* The idea is to periodically flush the tail of the pcache to the
    B-tree. This is essentially a generalization of the ImpFS GOM. *)
 
-module Gom_requires = struct
+module Requires = struct
   module Bt_blk_id = struct type t = blk_id let int2t i = i let t2int t = t end
   module Pc_blk_id = Bt_blk_id
 end
 
 
-module Gom' = Tjr_pcache.Gom.Make_gom(Gom_requires)
+module Ukv' = Uncached_pcache_with_btree.Make(Requires)
 
-let gom_mref_ops : ('a,'t) Mref_plus.mref = failwith "FIXME"
+let ukv_mref_ops : ('a,'t) Mref_plus.mref = failwith "FIXME"
 
 let pcache_blocks_limit = 10  (* eg *)
 
-let gom_ops = 
-  Gom'.make_gom_ops
+let ukv_ops = 
+  Ukv'.make_ukv_ops
     ~monad_ops
     ~btree_ops:map_ops
     ~pcache_ops:plog_ops 
     ~pcache_blocks_limit
-    ~gom_mref_ops
+    ~ukv_mref_ops
     ~kvop_map_bindings:(failwith "FIXME")
     ~bt_sync:(failwith "FIXME")
-    ~sync_gom_roots:(failwith "FIXME")
+    ~sync_ukv_roots:(failwith "FIXME")
 
-let _ = gom_ops  (* FIXME key seems to be int here rather than kk *)
+let _ = ukv_ops  (* FIXME key seems to be int here rather than kk *)
                 
 
-(* construct LRU and link to Gom ----------------------------------- *)
+(* construct LRU and link to Ukv ----------------------------------- *)
 
 open Tjr_lru_cache.Cache
 
@@ -190,7 +190,7 @@ let cached_map_ops =
   [@@ocaml.warning "-27"]
 
 
-(* FIXME get concurrency correct: LRU is thread safe, but Gom is not.
+(* FIXME get concurrency correct: LRU is thread safe, but Ukv is not.
    *)
 
 (* API -------------------------------------------------------------- *)

@@ -2,6 +2,8 @@
 
 (** 
 
+NOTE see diagram in <root>/docs/
+
 At a high level, this is a k -> v map.
 
 This is uncached: there is no cache in front of the store. The pcache

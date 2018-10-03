@@ -1,0 +1,3 @@
+(executables
+  (names tjr_kv_test)
+  (libraries tjr_kv))
