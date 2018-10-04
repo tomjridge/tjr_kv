@@ -1,3 +1,5 @@
+(*
+
 (** A key value store.
 
 This is a key value store, using the following technologies:
@@ -201,5 +203,8 @@ let cached_map_ops =
    The operations are: sync a key/value; sync the entire kv map. This
    needs to be done in the Cache module. Probably worth splitting this
    out from tjr_btree.
+
+*)
+
 
 *)

@@ -22,7 +22,7 @@ disk. One approach is to async (flush btree; flush pcache root).
 
 *)
 
-(* open Tjr_monad *)
+open Tjr_monad
 open Tjr_monad.Monad
 open Tjr_pcache
 
@@ -43,54 +43,23 @@ module Make(Requires : REQUIRES) = struct
   type bt_blk_id = Bt_blk_id.t
   type pc_blk_id = Pc_blk_id.t
 
-
-  (** We execute a roll up in another thread, to avoid blocking the
-     pcache. The roll-up thread will typically finish with a new pair
-     of roots. *)
-  type root_pair = {
+  (** The ukv state. Fields:
+- [in_roll_up]: a flag covering the critical section when we are executing a roll up
+- [pcache_root]: the root of the pcache
+- [btree_root]: the root of the B-tree
+  *)
+  type ukv_state = {
+    in_roll_up: bool;
     pcache_root: pc_blk_id;
     btree_root: bt_blk_id;
   }
 
+  
+  (* FIXME don't open this - can get confusing if we are with mref or
+     mrefplus *)
+  (* open Tjr_monad.Mref_plus *)
 
-  (* NOTE this should be executed in the rollup thread, so that the
-     pcache thread is not blocked; can't just instantiate this; need
-     to join to the end of a msg queue *)
-  let perform_rollup_in_rollup_thread
-    ~monad_ops
-    ~bt_insert
-    ~bt_delete
-    ~bt_sync (* to sync the B-tree to get the new B-tree root *)
-    ~kvop_map_bindings
-    ~sync_new_roots  (* not clear if we should just return the new roots rather than explicitly passing in a sync op *)
-    =
-    let ( >>= ) = monad_ops.bind in
-    let return = monad_ops.return in
-    let f (old_root,map,new_root) : (unit,'t) m =
-      begin
-        (* map consists of all the entries we need to roll up *)
-        map |> kvop_map_bindings |> fun ops ->
-        let rec loop ops = 
-          match ops with
-          | [] -> return (`Finished(old_root,new_root))
-          | v::ops ->
-            match v with
-            | Insert (k,v) -> bt_insert k v >>= fun () -> loop ops
-            | Delete k -> bt_delete k >>= fun () -> loop ops
-        in
-        loop ops
-      end
-      >>= 
-      begin
-        function `Finished(old_root,(*new*)pcache_root) -> 
-          (* sync the btree *)
-          bt_sync () >>= fun btree_root ->
-          (* now we need to flush the new roots to disk *)
-          sync_new_roots {pcache_root; btree_root} >>= fun () ->
-          return ()
-      end
-    in
-    f
+  type 't ukv_state_ops = (ukv_state,'t) Tjr_monad.Mref_plus.mref
 
 
   type ('k,'v,'t) ukv_ops = ('k,'v,'t) Tjr_btree.Map_ops.map_ops
@@ -99,24 +68,34 @@ module Make(Requires : REQUIRES) = struct
      B-tree, when the number of pcache blocks reaches
      pcache_blocks_limit *)
 
+  (* NOTE when we detach, we should not alter the pcache root, but
+     later after the btree changes are synced, we can sync the new
+     pcache root; in memory we also store both roots (as the ukv
+     state) in an mref *)
   (** Construct the UKV. Parameters:
 - [monad_ops]
+- [btree_ops]
 - [pcache_ops]
 - [pcache_blocks_limit]: how many blocks in the pcache before attempting a roll-up; if the length of pcache is [>=] this limit, we attempt a roll-up; NOTE that this limit should be >= 2 (if we roll up with 1 block, then in fact nothing gets rolled up because we roll up "upto" the current block; not a problem but probably pointless for testing)
-- [bt_find]: called if key not in pcache map  FIXME do we need a write-through cache here? or just rely on the front-end LRU?
-- [perform_rollup_in_rollup_thread]: called to detach the rollup into another thread
+- [ukv_mref_ops]: a reference to the ukv state; the pcache and btree roots get updated (also [in_roll_up] is updated)
+- [detach_map_ops]: used to get the bindings for the blocks that have been detached from the pcache
+- [bt_sync]: at the end of the roll-up, we sync the B-tree itself to disk
+- [sync_ukv_roots]: called just before leaving the critical section, to record new roots for B-tree and pcache
   *)
   let make_ukv_ops
-      ~monad_ops 
-      ~pcache_ops 
-      ~pcache_blocks_limit 
-      ~bt_find
-      ~perform_rollup_in_rollup_thread
+      ~monad_ops ~btree_ops ~pcache_ops ~pcache_blocks_limit 
+      ~ukv_mref_ops ~kvop_map_bindings
+      ~bt_sync  (* to sync the B-tree to get the new B-tree root *)
+      ~sync_ukv_roots  (* to write the ukv roots to disk somewhere *)
+
     : ('k,'v,'t) ukv_ops 
     =
-    (* let open Mref_plus in *)
+    let open Mref_plus in
     let ( >>= ) = monad_ops.bind in
     let return = monad_ops.return in
+    dest_map_ops btree_ops @@ fun ~find ~insert ~delete ~insert_many ->
+    (* rename just so we don't get confused *)
+    let (bt_find,bt_insert,bt_delete,bt_insert_many) = (find,insert,delete,insert_many) in
     let (*Persistent_log.*){find; add; detach; get_block_list_length} = pcache_ops in
     let (pc_find,pc_add,pc_detach,pc_get_block_list_length) = (find,add,detach,get_block_list_length) in
     let find k = 
@@ -129,13 +108,66 @@ module Make(Requires : REQUIRES) = struct
         | Delete k -> return None
     in
     let maybe_roll_up () = 
-      pc_get_block_list_length () >>= fun n ->
-      match n >= pcache_blocks_limit with
-      | false -> return `No_roll_up_needed
+      ukv_mref_ops.get () >>= function { in_roll_up; _ } ->
+      match in_roll_up with
       | true -> 
-        pc_detach () >>= fun (old_root,(map:'map),new_root,_(*new_map*)) ->
-        perform_rollup_in_rollup_thread (old_root,map,new_root) >>= fun () ->
-        return `Ok
+        return `Already_in_roll_up
+      | false ->
+        pc_get_block_list_length () >>= fun n ->
+        match n >= pcache_blocks_limit with
+        | false -> return `No_roll_up_needed
+        | true -> 
+          (* we need to roll-up the pcache into the B-tree *)
+          (* first set the flag; if already set, just skip the roll
+             up since someone else is doing it *)
+          ukv_mref_ops.with_ref (fun s -> 
+              match s.in_roll_up with
+              | true -> `Already_in_roll_up,s
+              | false -> `Ok,{s with in_roll_up=true}) >>= 
+          begin
+            function
+            | `Already_in_roll_up ->
+              (* of course, we checked in_roll_up above, and it was
+                 false; but a concurrent thread may have set it in the
+                 meantime *)
+              return `Already_in_roll_up
+            | `Ok -> 
+              (* the flag has been set; we need to roll up the
+                 cache; NOTE that if we have a single block in the
+                 pcache, and attempt to roll-up, then in fact
+                 nothing will be rolled up; FIXME this is presumably
+                 an error, so we require pclimit >= 2 FIXME we also
+                 need some sort of backpressure/prioritization on
+                 this roll-up thread in case the cache is running
+                 too far ahead of the B-tree *)
+              pc_detach () >>= fun (old_root,(map:'map),new_root,_(*new_map*)) ->
+              (* map consists of all the entries we need to roll up *)
+              map |> kvop_map_bindings |> fun ops ->
+              let rec loop ops = 
+                match ops with
+                | [] -> return  (`Finished(old_root,new_root))
+                | v::ops ->
+                  match v with
+                  | Insert (k,v) -> bt_insert k v >>= fun () -> loop ops
+                  | Delete k -> bt_delete k >>= fun () -> loop ops
+              in
+              loop ops
+          end
+          >>= 
+          begin
+            function
+            | `Already_in_roll_up -> return `Already_in_roll_up
+            | `Finished(old_root,(*new*)pcache_root) -> 
+              (* sync the btree *)
+              (* NOTE this should be done in the critical section, before resetting the flag *)
+              bt_sync () >>= fun btree_root ->
+              (* now we need to reset the flag, and the roots *)
+              sync_ukv_roots ~btree_root ~pcache_root >>= fun () ->
+              ukv_mref_ops.with_ref (fun s -> 
+                  assert(s.in_roll_up);
+                  (),{ in_roll_up=false; btree_root; pcache_root }) >>= fun () ->
+              return `Ok
+          end              
     in
     let insert k v =
       pc_add (Insert(k,v)) >>= fun () -> 
@@ -213,10 +245,10 @@ What do we want to test?
       (* pc_model_state: pc_model_state; *)
       btree_state: btree_repr;
       pcache_state: pc_model_state;  (* contains ptr_ref *)
-      (* ukv_state: ukv_state; *)
+      ukv_state: ukv_state;
       free_bt_blk_id: int;
       synced_btrees: (bt_blk_id* btree_repr)list;  (* assoc list *)
-      synced_root_pairs: root_pair list; 
+      synced_ukv_roots: (bt_blk_id*pc_blk_id) list; 
     }
 
     let init_test_state ~test = {
@@ -224,10 +256,10 @@ What do we want to test?
       btree_state=K_map.Map_.empty;
       pcache_state=Pc_model.{kvs=[];ptr_ref=Pc_blk_id.int2t 0};
       (* FIXME pcache root is duplicated *)
-      (* ukv_state={ in_roll_up=false; pcache_root=Pc_blk_id.int2t 0; btree_root=Bt_blk_id.int2t 0 }; *)
+      ukv_state={ in_roll_up=false; pcache_root=Pc_blk_id.int2t 0; btree_root=Bt_blk_id.int2t 0 };
       free_bt_blk_id=1;
       synced_btrees=[];
-      synced_root_pairs=[]                     
+      synced_ukv_roots=[]                     
     }
 
 
@@ -311,14 +343,14 @@ What do we want to test?
 
     let pcache_blocks_limit = 2
 
-    (* let ukv_mref_ops : (ukv_state, 'test state state_passing) Mref_plus.mref = 
-     *   let get () = with_world (fun s -> s.ukv_state,s) in
-     *   let set ukv_state = with_world (fun s -> (),{s with ukv_state}) in
-     *   let with_ref f = with_world (fun s -> 
-     *       let (b,ukv_state) = f s.ukv_state in
-     *       b,{s with ukv_state})
-     *   in
-     *   Mref_plus.{ get; set; with_ref } *)
+    let ukv_mref_ops : (ukv_state, 'test state state_passing) Mref_plus.mref = 
+      let get () = with_world (fun s -> s.ukv_state,s) in
+      let set ukv_state = with_world (fun s -> (),{s with ukv_state}) in
+      let with_ref f = with_world (fun s -> 
+          let (b,ukv_state) = f s.ukv_state in
+          b,{s with ukv_state})
+      in
+      Mref_plus.{ get; set; with_ref }
 
 
     (* when we sync a btree we simply increment the bt_blk_id and
@@ -345,24 +377,12 @@ What do we want to test?
     (* FIXME why are we revealing the map impl type here? pcache_ops also shares 'map type *)
     let kvop_map_bindings kvops = kvops |> List.map snd
 
-    let perform_rollup_in_rollup_thread =
-      perform_rollup_in_rollup_thread
-        ~monad_ops
-        ~bt_insert:btree_ops.insert
-        ~bt_delete:btree_ops.delete
-        ~bt_sync
-        ~kvop_map_bindings
-        ~sync_new_roots:(fun root_pair -> 
-            with_world (fun s ->
-                ((),{s with synced_root_pairs=root_pair::s.synced_root_pairs})))
-
     let ukv_ops : (key,value,'t) ukv_ops = 
       make_ukv_ops
-        ~monad_ops
-        ~pcache_ops 
-        ~pcache_blocks_limit 
-        ~bt_find:btree_ops.find
-        ~perform_rollup_in_rollup_thread
+        ~monad_ops ~btree_ops ~pcache_ops ~pcache_blocks_limit 
+        ~ukv_mref_ops ~kvop_map_bindings
+        ~bt_sync  (* to sync the B-tree to get the new B-tree root *)
+        ~sync_ukv_roots  (* to write the ukv roots to disk somewhere *)
 
     let _ = pcache_ops
 

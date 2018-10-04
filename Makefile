@@ -1,21 +1,26 @@
+DUNE:=opam exec dune
+
 build:
-	dune build @install
-	dune build bin/tjr_kv_test.exe
+	$(DUNE) build @install
+	$(DUNE) build bin/tjr_kv_test.exe
 
 install:
-	dune install
+	$(DUNE) install
 
 uninstall:
-	dune uninstall
+	$(DUNE) uninstall
 
 run_tests:
-	dune exec bin/tjr_kv_test.exe
+	$(DUNE) exec bin/tjr_kv_test.exe
 
-doc:
-	dune build @doc
+doc: FORCE
+	$(DUNE) build @doc
 
 view_doc:
 	google-chrome  _build/default/_doc/_html/index.html
 
 clean:
-	dune clean
+	$(DUNE) clean
+
+
+FORCE:
