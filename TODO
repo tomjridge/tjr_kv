@@ -12,3 +12,5 @@
     insert(k,v) {T,P} {B,C} where T=transient, P=persistent;
     B=block, C=continue. T typically implies C, although we may want
     to expose when there is a flush of the LRU
+- add a wrapper round pcache so we have an active thread parameterized
+  over the bi-directional queue from LRU to pcache

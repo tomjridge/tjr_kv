@@ -160,6 +160,7 @@ module Make(Requires : REQUIRES) = struct
       (* FIXME we should do something smarter here *)
       insert k v >>= fun () -> return kvs
     in
+    (* NOTE returns a Tjr_btree.Map_ops.map_ops *)
     { find; insert; delete; insert_many }
 
 
