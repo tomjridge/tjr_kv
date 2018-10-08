@@ -53,20 +53,29 @@ module Make(Requires : REQUIRES) = struct
   }
 
 
-  (* NOTE this should be executed in the rollup thread, so that the
-     pcache thread is not blocked; can't just instantiate this; need
-     to join to the end of a msg queue *)
+  (** This should execute in another dedicated rollup thread, so that
+     the pcache thread is not blocked. We can't just instantiate this
+     function here. In the pcache thread we need to join a msg to the
+     end of a msg queue, signalling the rollup thread to perform a
+     rollup. In this case, the rollup thread likely already knows
+     operations such as [bt_insert] etc. which it can use to
+     instantiate this function.
+
+      NOTE that we return a unit so that from the pcache we can call
+     this function without waiting for the rollup to occur. So the new
+     roots have to be handled somewhere else (not in the pcache
+     thread).  *)
   let perform_rollup_in_rollup_thread
     ~monad_ops
-    ~bt_insert
+    ~(bt_insert:'k -> 'v -> (unit,'t) m)
     ~bt_delete
     ~bt_sync (* to sync the B-tree to get the new B-tree root *)
-    ~kvop_map_bindings
+    ~(kvop_map_bindings:'op_map -> ('k,'v) op list)
     ~sync_new_roots  (* not clear if we should just return the new roots rather than explicitly passing in a sync op *)
     =
     let ( >>= ) = monad_ops.bind in
     let return = monad_ops.return in
-    let f (old_root,map,new_root) : (unit,'t) m =
+    let f ((old_root:'pc_blk_id),map,new_root) : (unit,'t) m =
       begin
         (* map consists of all the entries we need to roll up *)
         map |> kvop_map_bindings |> fun ops ->
@@ -103,15 +112,15 @@ module Make(Requires : REQUIRES) = struct
 - [monad_ops]
 - [pcache_ops]
 - [pcache_blocks_limit]: how many blocks in the pcache before attempting a roll-up; if the length of pcache is [>=] this limit, we attempt a roll-up; NOTE that this limit should be >= 2 (if we roll up with 1 block, then in fact nothing gets rolled up because we roll up "upto" the current block; not a problem but probably pointless for testing)
-- [bt_find]: called if key not in pcache map  FIXME do we need a write-through cache here? or just rely on the front-end LRU?
-- [perform_rollup_in_rollup_thread]: called to detach the rollup into another thread
+- [bt_find]: called if key not in pcache map  FIXME do we need a write-through cache here? or just rely on the front-end LRU? FIXME note that even if a rollup is taking place, we can use the old B-tree root for the [bt_find] operation.
+- [perform_rollup_in_rollup_thread]: called to detach the rollup into another thread; typically this operation puts a msg on a message queue which is then received and acted upon by the dedicated rollup thread
   *)
   let make_ukv_ops
       ~monad_ops 
       ~pcache_ops 
       ~pcache_blocks_limit 
       ~bt_find
-      ~perform_rollup_in_rollup_thread
+      ~(perform_rollup_in_rollup_thread:('pc_blk_id * 'map * 'pc_blk_id) -> (unit,'t) m)
     : ('k,'v,'t) ukv_ops 
     =
     (* let open Mref_plus in *)

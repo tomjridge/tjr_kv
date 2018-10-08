@@ -1,4 +1,3 @@
-(*
 
 (** A key value store.
 
@@ -10,25 +9,29 @@ This is a key value store, using the following technologies:
 
  *)
 
-(** 
+(**
 
-Fix a type of keys and values (int, say).
+Steps involved:
 
-Fix a block device.
+- Fix a type of keys and values (int, say).
 
-Fix marshalling strategy.
+- Fix a block device.
 
-Create a store.
+- Fix marshalling strategy.
 
-Construct a B-tree.
+- Create a store.
 
-Construct a persistent cache.
+- Construct a B-tree. Add dedicated rollup thread.
 
-Link pcache to B-tree.
+- Construct a persistent cache. Add dedicated pcache thread.
 
-Construct an LRU write-back cache.
+- Link pcache to B-tree using message queue.
 
-Link LRU to pcache.
+- Construct an LRU write-back cache. This should be multithreaded (ie
+   multiple user threads can access it) but flushing should
+   communicate with the single thread in pcache.
+
+- Link LRU to pcache.
 
 *)
 
@@ -137,9 +140,8 @@ module Pcache_impl = struct
 
 end
 
-let plog_ops : (kk, vv, pcache_map, 'a, phant_passing) Tjr_pcache.Persistent_log.plog_ops =
-  Pcache_impl.plog_ops ()
-
+let plog_ops : unit -> (kk, vv, pcache_map, 'a, phant_passing) Tjr_pcache.Persistent_log.plog_ops =
+  Pcache_impl.plog_ops
 
 
 (* link pcache to B-tree -------------------------------------------- *)
@@ -155,9 +157,13 @@ end
 
 module Ukv' = Uncached_pcache_with_btree.Make(Requires)
 
+module Tmp : sig end = struct
 let ukv_mref_ops : ('a,'t) Mref_plus.mref = failwith "FIXME"
+end
 
 let pcache_blocks_limit = 10  (* eg *)
+
+(*
 
 let ukv_ops = 
   Ukv'.make_ukv_ops
