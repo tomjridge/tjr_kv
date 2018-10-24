@@ -22,12 +22,13 @@ open Tjr_btree
 open Tjr_btree.Block.BlkN
 open Uncached_persistent_map_api
 
+module Cache = Tjr_lru_cache.
+
 let make_persistent_map
     ~monad_ops
     ~(uncached_pmap_ops:('k,'v,'t) uncached_pmap_ops)
   =
 
-  let module Cache = Tjr_lru_cache.Cache in
 
   (* construct LRU ----------------------------------- *)
 
