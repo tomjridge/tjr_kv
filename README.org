@@ -13,7 +13,8 @@ opam:
 <none>
 
 other:
-| tjr_btree  | for the persistent map
-| tjr_pcache | for the persistent cache (in front of the B-tree)
-
+| tjr_btree     | for the persistent map                            |
+| tjr_pcache    | for the persistent cache (in front of the B-tree) |
+| tjr_lru_cache |                                                   |
+|               |                                                   |
 

@@ -3,9 +3,9 @@
 - add concurrency in uncached_pcache_with_btree
   - needs message queue
   - needs overall sys config with dedicated threads, shared state etc
-- add lru frontend
-  - also needs msg queue
-- add sync operations to LRU API (sync_key/sync_keys?/sync_all)
+- X add lru frontend
+  - also needs msg queue?
+- X add sync operations to LRU API (sync_key/sync_keys?/sync_all)
   - maybe add ability to call ops like insert and delete with a "sync"
     flag
   - may also want to have block/continue versions of these eg
