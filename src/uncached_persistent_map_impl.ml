@@ -37,7 +37,7 @@ module Make(Requires : REQUIRES) = struct
       
   open Tjr_btree.Map_ops
 
-  open Persistent_log
+  open Detachable_chunked_list
 
 
   type bt_blk_id = Bt_blk_id.t
@@ -198,7 +198,7 @@ What do we want to test?
 
 
     (* FIXME remove "abstract" and just use model; remove model_ops *)
-    module Pc_model = Persistent_log.Abstract_model_ops(Pc_blk_id)
+    module Pc_model = Detachable_chunked_list.Abstract_model_ops(Pc_blk_id)
 
 
     module K = Tjr_int.Make_type_isomorphic_to_int()
@@ -216,7 +216,7 @@ What do we want to test?
     (* need a map from k to (k,v)op *)
 
     (* if we make the map types the same type, we can union the maps more easily *)
-    type k_vop_map = (key,value)Persistent_log.op K_map.Map_.t
+    type k_vop_map = (key,value)Detachable_chunked_list.op K_map.Map_.t
 
     type 'test state = {
       test:'test;
