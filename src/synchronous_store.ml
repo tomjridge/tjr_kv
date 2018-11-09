@@ -65,7 +65,7 @@ module Make(Requires : REQUIRES) = struct
      this function without waiting for the rollup to occur. So the new
      roots have to be handled somewhere else (not in the pcache
      thread).  *)
-  let perform_rollup_in_rollup_thread
+  let execute_btree_rollup
     ~monad_ops
     ~(bt_insert:'k -> 'v -> (unit,'t) m)
     ~bt_delete
@@ -113,14 +113,14 @@ module Make(Requires : REQUIRES) = struct
 - [pcache_ops]
 - [pcache_blocks_limit]: how many blocks in the pcache before attempting a roll-up; if the length of pcache is [>=] this limit, we attempt a roll-up; NOTE that this limit should be >= 2 (if we roll up with 1 block, then in fact nothing gets rolled up because we roll up "upto" the current block; not a problem but probably pointless for testing)
 - [bt_find]: called if key not in pcache map  FIXME do we need a write-through cache here? or just rely on the front-end LRU? FIXME note that even if a rollup is taking place, we can use the old B-tree root for the [bt_find] operation.
-- [perform_rollup_in_rollup_thread]: called to detach the rollup into another thread; typically this operation puts a msg on a message queue which is then received and acted upon by the dedicated rollup thread
+- [execute_btree_rollup]: called to detach the rollup into another thread; typically this operation puts a msg on a message queue which is then received and acted upon by the dedicated rollup thread
   *)
   let make_ukv_ops
       ~monad_ops 
       ~pcache_ops 
       ~pcache_blocks_limit 
       ~bt_find
-      ~(perform_rollup_in_rollup_thread:('pc_blk_id * 'map * 'pc_blk_id) -> (unit,'t) m)
+      ~(execute_btree_rollup:('pc_blk_id * 'map * 'pc_blk_id) -> (unit,'t) m)
     : ('k,'v,'t) ukv_ops 
     =
     (* let open Mref_plus in *)
@@ -143,7 +143,7 @@ module Make(Requires : REQUIRES) = struct
       | false -> return `No_roll_up_needed
       | true -> 
         pc_detach () >>= fun (old_root,(map:'map),new_root,_(*new_map*)) ->
-        perform_rollup_in_rollup_thread (old_root,map,new_root) >>= fun () ->
+        execute_btree_rollup (old_root,map,new_root) >>= fun () ->
         return `Ok
     in
     let insert k v =
@@ -355,8 +355,8 @@ What do we want to test?
     (* FIXME why are we revealing the map impl type here? pcache_ops also shares 'map type *)
     let kvop_map_bindings kvops = kvops |> List.map snd
 
-    let perform_rollup_in_rollup_thread =
-      perform_rollup_in_rollup_thread
+    let execute_btree_rollup =
+      execute_btree_rollup
         ~monad_ops
         ~bt_insert:btree_ops.insert
         ~bt_delete:btree_ops.delete
@@ -372,7 +372,7 @@ What do we want to test?
         ~pcache_ops 
         ~pcache_blocks_limit 
         ~bt_find:btree_ops.find
-        ~perform_rollup_in_rollup_thread
+        ~execute_btree_rollup
 
     let _ = pcache_ops
 

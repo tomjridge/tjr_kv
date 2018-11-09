@@ -5,7 +5,7 @@ module Requires = struct
 end
 
 
-module Ukv = Tjr_kv.Uncached_persistent_map_impl.Make(Requires)
+module Ukv = Tjr_kv.Synchronous_store.Make(Requires)
 
 module Test = Ukv.Test()
 
