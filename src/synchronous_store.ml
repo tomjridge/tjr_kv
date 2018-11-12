@@ -23,7 +23,7 @@ disk. One approach is to async (flush btree; flush pcache root).
 *)
 
 (* open Tjr_monad *)
-open Tjr_monad.Monad
+open Tjr_monad.Types
 open Tjr_pcache
 
 module type REQUIRES = sig 
@@ -170,9 +170,9 @@ module Make(Requires : REQUIRES) = struct
   module Test()  : sig val run_tests: depth:int -> unit end = struct
 
     open Tjr_monad
-    open Monad
-    open State_passing_instance
-    module Spi = State_passing_instance
+    open Tjr_monad.Types
+    open Tjr_monad.State_passing
+    module Spi = Tjr_monad.State_passing
 
     (* 
 We need
@@ -200,6 +200,9 @@ What do we want to test?
     (* FIXME remove "abstract" and just use model; remove model_ops *)
     module Pc_model = Detachable_chunked_list.Abstract_model_ops(Pc_blk_id)
 
+
+
+    (* FIXME this is duplicated in btree_model; DRY *)
 
     module K = Tjr_int.Make_type_isomorphic_to_int()
     type key = K.t
@@ -378,12 +381,12 @@ What do we want to test?
 
     let insert k v s =
       ukv_ops.insert k v |> fun m ->
-      Tjr_monad.State_passing_instance.run ~init_state:s m |> fun (_,s') ->
+      Tjr_monad.State_passing.run ~init_state:s m |> fun (_,s') ->
       s'
 
     let delete k s =
       ukv_ops.delete k |> fun m ->
-      Tjr_monad.State_passing_instance.run ~init_state:s m |> fun (_,s') ->
+      Tjr_monad.State_passing.run ~init_state:s m |> fun (_,s') ->
       s'
 
 
