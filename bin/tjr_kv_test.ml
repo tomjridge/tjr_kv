@@ -7,7 +7,7 @@ end
 
 module Ukv = Tjr_kv.Synchronous_store.Make(Requires)
 
-module Test = Ukv.Test()
+module Test = Ss_test.Test()
 
 let main () = Test.run_tests ~depth:4
 

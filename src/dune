@@ -2,5 +2,8 @@
   (name tjr_kv)
   (public_name tjr_kv)
   (preprocess (pps ppx_deriving_yojson))
-  (modules Synchronous_store Btree_ops Btree_model Msg) ; FIXME
+;  (modules Synchronous_store Btree_ops Btree_model Msg) ; FIXME
   (libraries tjr_btree tjr_pcache tjr_lru_cache tjr_mem_queue))
+
+(include_subdirs unqualified)
+
