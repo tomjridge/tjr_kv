@@ -5,11 +5,13 @@
 - lru
   - q_lru_dcl (msg queue from lru to dcl)
   - Lru
+  - Lru_t, which takes messages from lru.to_lower to enqueue on q_lru_dcl
 
 - synchronous store
   - q_dcl_btree (msg queue from dcl to btree)
   - DCL (detachable chunked list)
   - DCL thread (Dcl_t)
+    - takes msgs from q_dcl_btree and executes against dcl and B-tree
   - B-tree
   - B-tree thread (Btree_t)
     - including root pair functionality
@@ -185,9 +187,9 @@ module Btree_t = struct
         ~sync_new_roots
     in
     let rec loop () =
-      q_ops.dequeue ~q:q_dcl_btree >>= fun (msg:'map msg) -> 
-      let {old_root;new_root;map} = msg in
+      q_ops.dequeue ~q:q_dcl_btree >>= fun {old_root;new_root;map} -> 
       execute_btree_rollup (old_root,map,new_root) >>= fun () ->
+      (* FIXME change ex to return new root *)
       loop ()
     in
     loop

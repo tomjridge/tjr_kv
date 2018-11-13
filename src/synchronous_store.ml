@@ -22,9 +22,9 @@ disk. One approach is to async (flush btree; flush pcache root).
 
 *)
 
-(* open Tjr_monad *)
 open Tjr_monad.Types
-open Tjr_pcache
+open Tjr_pcache.Types
+open Tjr_pcache.Ins_del_op_type
 
 module type REQUIRES = sig 
   module Bt_blk_id:Tjr_int.TYPE_ISOMORPHIC_TO_INT
@@ -37,7 +37,7 @@ module Make(Requires : REQUIRES) = struct
       
   open Tjr_btree.Map_ops
 
-  open Detachable_chunked_list
+  open Tjr_pcache.Detachable_chunked_list
 
 
   type bt_blk_id = Bt_blk_id.t
@@ -75,13 +75,13 @@ module Make(Requires : REQUIRES) = struct
     =
     let ( >>= ) = monad_ops.bind in
     let return = monad_ops.return in
-    let f ((old_root:'pc_blk_id),map,new_root) : (unit,'t) m =
+    let f detach_result : (unit,'t) m =
       begin
         (* map consists of all the entries we need to roll up *)
-        map |> kvop_map_bindings |> fun ops ->
+        detach_result.old_map |> kvop_map_bindings |> fun ops ->
         let rec loop ops = 
           match ops with
-          | [] -> return (`Finished(old_root,new_root))
+          | [] -> return (`Finished(detach_result.old_ptr,detach_result.new_ptr))
           | v::ops ->
             match v with
             | Insert (k,v) -> bt_insert k v >>= fun () -> loop ops
@@ -120,13 +120,13 @@ module Make(Requires : REQUIRES) = struct
       ~pcache_ops 
       ~pcache_blocks_limit 
       ~bt_find
-      ~(execute_btree_rollup:('pc_blk_id * 'map * 'pc_blk_id) -> (unit,'t) m)
+      ~execute_btree_rollup
     : ('k,'v,'t) ukv_ops 
     =
     (* let open Mref_plus in *)
     let ( >>= ) = monad_ops.bind in
     let return = monad_ops.return in
-    let (*Persistent_log.*){find; add; detach; get_block_list_length} = pcache_ops in
+    let {find; add; detach; get_block_list_length} = pcache_ops in
     let (pc_find,pc_add,pc_detach,pc_get_block_list_length) = (find,add,detach,get_block_list_length) in
     let find k = 
       pc_find k >>= fun op ->
@@ -142,8 +142,8 @@ module Make(Requires : REQUIRES) = struct
       match n >= pcache_blocks_limit with
       | false -> return `No_roll_up_needed
       | true -> 
-        pc_detach () >>= fun (old_root,(map:'map),new_root,_(*new_map*)) ->
-        execute_btree_rollup (old_root,map,new_root) >>= fun () ->
+        pc_detach () >>= fun detach_result ->
+        execute_btree_rollup detach_result >>= fun () ->
         return `Ok
     in
     let insert k v =
@@ -160,7 +160,6 @@ module Make(Requires : REQUIRES) = struct
       (* FIXME we should do something smarter here *)
       insert k v >>= fun () -> return kvs
     in
-    (* NOTE returns a Tjr_btree.Map_ops.map_ops *)
     { find; insert; delete; insert_many }
 
 
