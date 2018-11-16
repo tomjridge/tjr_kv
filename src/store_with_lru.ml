@@ -98,9 +98,10 @@ module Sync_store = Synchronous_store.Make(
 
 (* q_lru_dcl -------------------------------------------------------- *)
 
-type ('k,'v,'t) msg = ('k,'v,'t) Tjr_lru_cache.Msg.msg
+type ('k,'v,'t) msg = ('k,'v,'t) Tjr_lru_cache.Msg_type.msg
 
-let q_lru_dcl_ops : (('k,'v,'t) msg,'m,'c) Tjr_mem_queue.Mem_queue.queue_ops =
+(* FIXME can we avoid this unit arg? try to get truly polymorphic ops *)
+let q_lru_dcl_ops : ((int,int,Tjr_store.t) msg,'m,'c) Tjr_mem_queue.Mem_queue.queue_ops =
   queue_ops ()
 
 
@@ -138,7 +139,7 @@ end
 
 (* Q_dcl_btree ------------------------------------------------------ *)
 
-type 'map msg = (blk_id,'map) Msg.Q_dcl_btree.msg'
+type 'map dcl_bt_msg = (blk_id,'map) Msg.dcl_bt_msg
 
 let q_dcl_btree_ops = queue_ops ()
 
@@ -172,7 +173,7 @@ let btree_ops : ('k,'v,blk_id,'t) btree_ops =
    then runs against the B-tree, and records the new root pair. *)
 
 module Btree_t = struct
-  open Msg.Q_dcl_btree      
+  open Msg
   open Tjr_mem_queue.Mem_queue
 
   let btree_t ~kvop_map_bindings ~sync_new_roots ~btree_ops ~q_ops ~q_dcl_btree = 
@@ -187,8 +188,8 @@ module Btree_t = struct
         ~sync_new_roots
     in
     let rec loop () =
-      q_ops.dequeue ~q:q_dcl_btree >>= fun {old_root;new_root;map} -> 
-      execute_btree_rollup (old_root,map,new_root) >>= fun () ->
+      q_ops.dequeue ~q:q_dcl_btree >>= fun detach -> 
+      execute_btree_rollup detach >>= fun () ->
       (* FIXME change ex to return new root *)
       loop ()
     in

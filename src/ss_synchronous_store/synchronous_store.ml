@@ -81,7 +81,7 @@ module Make(Requires : REQUIRES) = struct
         detach_result.old_map |> kvop_map_bindings |> fun ops ->
         let rec loop ops = 
           match ops with
-          | [] -> return (`Finished(detach_result.old_ptr,detach_result.new_ptr))
+          | [] -> return (`Finished(detach_result.old_ptr,detach_result.new_ptr))  (* FIXME just return detach_result *)
           | v::ops ->
             match v with
             | Insert (k,v) -> bt_insert k v >>= fun () -> loop ops
@@ -102,6 +102,7 @@ module Make(Requires : REQUIRES) = struct
     f
 
 
+  (* FIXME rename ukv *)
   type ('k,'v,'t) ukv_ops = ('k,'v,'t) Tjr_btree.Map_ops.map_ops
 
   (* we perform a "roll up" operation, merging the pcache into the
@@ -110,7 +111,7 @@ module Make(Requires : REQUIRES) = struct
 
   (** Construct the UKV. Parameters:
 - [monad_ops]
-- [pcache_ops]
+- [pcache_ops]: dcl_ops from tjr_pcache
 - [pcache_blocks_limit]: how many blocks in the pcache before attempting a roll-up; if the length of pcache is [>=] this limit, we attempt a roll-up; NOTE that this limit should be >= 2 (if we roll up with 1 block, then in fact nothing gets rolled up because we roll up "upto" the current block; not a problem but probably pointless for testing)
 - [bt_find]: called if key not in pcache map  FIXME do we need a write-through cache here? or just rely on the front-end LRU? FIXME note that even if a rollup is taking place, we can use the old B-tree root for the [bt_find] operation.
 - [execute_btree_rollup]: called to detach the rollup into another thread; typically this operation puts a msg on a message queue which is then received and acted upon by the dedicated rollup thread
@@ -137,7 +138,7 @@ module Make(Requires : REQUIRES) = struct
         | Delete k -> return None
     in
     let maybe_roll_up () = 
-      pc.undetached_block_count () >>= fun n ->
+      pc.block_list_length () >>= fun n ->
       match n >= pcache_blocks_limit with
       | false -> return `No_roll_up_needed
       | true -> 

@@ -1,3 +1,4 @@
+(*
 (* testing -------------------------------------------------------- *)
 
 (* NOTE we need pc_blk_id from synchronous_store.Make FIXME *)
@@ -10,13 +11,19 @@ module Test()  : sig val run_tests: depth:int -> unit end = struct
     open Tjr_pcache
 
     (* 
+
 We need
 - monad; use state-passing
 - btree_ops; these are just map ops
-- pcache_ops; these are from persistent_log; the pcache state needs to be part of our global state
-- ukv_mref_ops; this is just the state
-- detach_map_ops; just a map supporting ('k, ('k, 'v) op, 'map) Tjr_map.map_ops 
-- bt_sync: perhaps we also record valid states as part of the global state? the bt_sync operation could return a btree_root (iso to int); FIXME do we want to identify btree_root as a different type? or maybe work with 'a blkid?
+- pcache_ops; these are from tjr_pcache; the pcache state needs to be
+  part of our global state
+- XXX ukv_mref_ops; this is just the state
+- detach_map_ops; just a map supporting ('k, ('k, 'v) op, 'map)
+  Tjr_map.map_ops
+- bt_sync: perhaps we also record valid states as part of the global
+  state? the bt_sync operation could return a btree_root (iso to int);
+  FIXME do we want to identify btree_root as a different type? or
+  maybe work with 'a blkid?
 - sync_ukv_roots: also record this as part of our global state
 
 
@@ -24,9 +31,11 @@ What do we want to test?
 
 - That the ukv abstracts to a simple map
   - take B-tree state (as a map) and append pcache state (as a map)
-  - the abstract state should be the same before and after a sync_ukv_root action (which occurs when a roll-up occurs)
+  - the abstract state should be the same before and after a
+    sync_ukv_root action (which occurs when a roll-up occurs)
 - That the state is always well formed:
-  - (concurrency ... needs to be tested with multiple insert threads and arb interleaving FIXME)
+  - (concurrency ... needs to be tested with multiple insert threads
+    and arb interleaving FIXME)
   - ?anything else?
 
 *)
@@ -344,3 +353,4 @@ Actual: %s
 
 
 end  (* Test *)
+*)
