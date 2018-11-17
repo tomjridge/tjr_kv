@@ -1,74 +1,41 @@
+(*
 (** A KV store with the LRU frontend. *)
 
 (** We construct:
 
-- lru
+
+- LRU
   - q_lru_dcl (msg queue from lru to dcl)
   - Lru
   - Lru_t, which takes messages from lru.to_lower to enqueue on q_lru_dcl
 
-- synchronous store
+
+
+
+- DCL
   - q_dcl_btree (msg queue from dcl to btree)
   - DCL (detachable chunked list)
   - DCL thread (Dcl_t)
     - takes msgs from q_dcl_btree and executes against dcl and B-tree
+
+
+- B-tree
   - B-tree
-  - B-tree thread (Btree_t)
-    - including root pair functionality
+  - B-tree thread (Btree_t) listening to q_dcl_btree
+    - also includes root pair functionality
 
 
-We connect:
-
-- Lru -> Dcl_t with a message queue q_lru_dcl
-- Dcl_t -> Btree_t with a message queue
 
 *)
 
-(* monad ops -------------------------------------------------------- *)
-
-(* use lwt *)
-
-open Tjr_monad.Lwt_instance
-
-let monad_ops = lwt_ops
-
-let ( >>= ) = monad_ops.bind
-let return = monad_ops.return
+open Tjr_mem_queue.Types
 
 
-(* other lwt ops ---------------------------------------------------- *)
-
-let event_ops = lwt_event_ops
-
-module Lwt_ops = struct
-
-  (* FIXME move mutex and cvar ops from mem_queue to tjr_monad; give
-     lwt impl there *)
-
-  open Tjr_mem_queue.Mem_queue
 
 
-  let mutex_ops : ('m,'c,'t) mutex_ops = {
-    create_mutex=(fun () ->
-        Lwt_mutex.create() |> fun mut ->
-        return mut);
-    create_cvar=(fun () ->
-        Lwt_condition.create() |> fun cvar ->
-        return cvar);
-    lock=(fun mut ->
-        Lwt_mutex.lock mut |> from_lwt);
-    unlock=(fun mut ->
-        Lwt_mutex.unlock mut |> fun _ -> return ());
-    signal=(fun cvar ->
-        Lwt_condition.broadcast cvar () |> fun _ -> return ());
-    wait=(fun mut cvar ->
-        Lwt_condition.wait ~mutex:mut cvar |> from_lwt)
-  }
+(* lwt ops ---------------------------------------------------- *)
 
-  let queue_ops () = make_ops ~monad_ops ~mutex_ops
-
-end
-include Lwt_ops
+(* open Lwt_mutex_cvar_ops *)
 
 
 
@@ -78,41 +45,34 @@ type blk_id = Blk_id of int
 
 
 
-(* sync store ------------------------------------------------------- *)
-
-module Sync_store = Synchronous_store.Make(
-  struct
-    module Bt_blk_id = struct 
-      type t = blk_id
-      let int2t = fun i -> Blk_id i 
-      let t2int = fun (Blk_id i) -> i
-    end
-    module Pc_blk_id = struct 
-      type t = blk_id
-      let int2t = fun i -> Blk_id i 
-      let t2int = fun (Blk_id i) -> i
-    end
-  end)
-
-
-
 (* q_lru_dcl -------------------------------------------------------- *)
 
-type ('k,'v,'t) msg = ('k,'v,'t) Tjr_lru_cache.Msg_type.msg
+type ('k,'v,'t) msg' = ('k,'v,'t) Tjr_lru_cache.Msg_type.msg
+
+type lru_dcl_msg = (int,int,Tjr_store.t) msg'
 
 (* FIXME can we avoid this unit arg? try to get truly polymorphic ops *)
-let q_lru_dcl_ops : ((int,int,Tjr_store.t) msg,'m,'c) Tjr_mem_queue.Mem_queue.queue_ops =
+(* FIXME why is the 'q type a queue? *)
+let q_lru_dcl_ops : (lru_dcl_msg,'q,'t) queue_ops =
   queue_ops ()
+
+let _ :
+  (lru_dcl_msg, (Lwt_mutex.t, unit Lwt_condition.t, lru_dcl_msg) queue,
+   Tjr_monad.Lwt_instance.lwt) queue_ops
+= q_lru_dcl_ops
+
 
 
 (* lru -------------------------------------------------------------- *)
 
-
 module Lru' = struct
   open Tjr_lru_cache.Lru_multithreaded
 
-  let q_lru_dcl = failwith "FIXME"
+  (** An empty message queue reference *)
+  
+  let q_lru_dcl = mk_ref' (Lwt_mq.empty ())
 
+  (* This seems to require that q is the queue itself rather than some ref *)
   let enqueue msg = q_lru_dcl_ops.enqueue ~q:q_lru_dcl ~msg
 
   let with_lru_ops : ('msg,'k,'v,'t)with_lru_ops = failwith "FIXME"     
@@ -133,6 +93,27 @@ module Lru' = struct
 
 end
 
+
+
+
+
+
+
+(* sync store ------------------------------------------------------- *)
+
+module Sync_store = Synchronous_store.Make(
+  struct
+    module Bt_blk_id = struct 
+      type t = blk_id
+      let int2t = fun i -> Blk_id i 
+      let t2int = fun (Blk_id i) -> i
+    end
+    module Pc_blk_id = struct 
+      type t = blk_id
+      let int2t = fun i -> Blk_id i 
+      let t2int = fun (Blk_id i) -> i
+    end
+  end)
 
 
 
@@ -208,3 +189,4 @@ end
     
     
 
+*)
