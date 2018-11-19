@@ -91,12 +91,11 @@ module Lru' = struct
 
   let async : Tjr_monad.Lwt_instance.lwt async = 
     fun (f:unit -> (unit,lwt) m) : (unit,lwt) m ->
-                                             
-    (* Lwt.async (fun () -> to_lwt(f ())) *)
-    failwith ""
+      Lwt.async (fun () -> f () |> to_lwt); return ()
 
-  (* FIXME add a type annot here *)
-  let lru_callback_ops = make_lru_callback_ops ~monad_ops ~with_lru_ops ~async
+  let lru_callback_ops : (int,int,lwt) mt_callback_ops = make_lru_callback_ops ~monad_ops ~with_lru_ops ~async
+
+  let _ = lru_callback_ops
 
   (* the interface we expose *)
   let lru_ops = failwith "FIXME"
