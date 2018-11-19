@@ -1,12 +1,21 @@
-(*
 (** A KV store with the LRU frontend. *)
 
 (** We construct:
 
+- XXX Actually, work with references first XXX Functional store thread
+  - this maintains the "global" state, including locks etc
+  - the queues are kept separate since they are implemented using mutation anyway FIXME perhaps prefer a "functional" version using the functional store
+  - includes:
+    - lru_state
+    - dcl_state
+    - bt_state (a root pointer?)
+  - also includes an Lwt_mvar for communication and implementation of with_state
+
+
 
 - LRU
   - q_lru_dcl (msg queue from lru to dcl)
-  - Lru
+  - Lru (and lru_state)
   - Lru_t, which takes messages from lru.to_lower to enqueue on q_lru_dcl
 
 
@@ -14,7 +23,7 @@
 
 - DCL
   - q_dcl_btree (msg queue from dcl to btree)
-  - DCL (detachable chunked list)
+  - DCL (detachable chunked list) and dcl_state
   - DCL thread (Dcl_t)
     - takes msgs from q_dcl_btree and executes against dcl and B-tree
 
@@ -28,56 +37,63 @@
 
 *)
 
+open Tjr_monad.Types
 open Tjr_mem_queue.Types
-
-
 
 
 (* lwt ops ---------------------------------------------------- *)
 
-(* open Lwt_mutex_cvar_ops *)
+(* see lwt_aux *)
 
-
+open Lwt_aux
 
 (* blk_id ----------------------------------------------------------- *)
 
-type blk_id = Blk_id of int  
+open Blk_id_type
 
 
 
 (* q_lru_dcl -------------------------------------------------------- *)
 
-type ('k,'v,'t) msg' = ('k,'v,'t) Tjr_lru_cache.Msg_type.msg
-
-type lru_dcl_msg = (int,int,Tjr_store.t) msg'
-
-(* FIXME can we avoid this unit arg? try to get truly polymorphic ops *)
-(* FIXME why is the 'q type a queue? *)
-let q_lru_dcl_ops : (lru_dcl_msg,'q,'t) queue_ops =
-  queue_ops ()
-
-let _ :
-  (lru_dcl_msg, (Lwt_mutex.t, unit Lwt_condition.t, lru_dcl_msg) queue,
-   Tjr_monad.Lwt_instance.lwt) queue_ops
-= q_lru_dcl_ops
+(* see lwt_aux, q_dcl_bt, ..._ops *)
 
 
 
 (* lru -------------------------------------------------------------- *)
 
+
 module Lru' = struct
-  open Tjr_lru_cache.Lru_multithreaded
+  open Tjr_lru_cache.Multithreaded_lru
 
-  (** An empty message queue reference *)
+  let from_lwt = Tjr_monad.Lwt_instance.from_lwt
+  let to_lwt = Tjr_monad.Lwt_instance.to_lwt
+         
+  let lru_lock = Lwt_aux.create_mutex()
+  let lru_state : (int,int,lwt) lru_state ref = ref (
+      Tjr_lru_cache.Mt_types.mt_initial_state 
+        ~max_size:4 
+        ~evict_count:2 
+        ~compare_k:(fun (x:int) y -> Pervasives.compare x y))
+
+  (** An empty message queue. NOTE not in funstore *)
+  let q_lru_dcl = Lwt_aux.empty_queue ()
   
-  let q_lru_dcl = mk_ref' (Lwt_mq.empty ())
-
-  (* This seems to require that q is the queue itself rather than some ref *)
   let enqueue msg = q_lru_dcl_ops.enqueue ~q:q_lru_dcl ~msg
 
-  let with_lru_ops : ('msg,'k,'v,'t)with_lru_ops = failwith "FIXME"     
+  let with_lru_ops : ('msg,'k,int,'t)with_lru_ops = 
+    let with_lru f = 
+      from_lwt (Lwt_mutex.lock lru_lock) >>= fun () ->
+      f ~lru:(!lru_state) ~set_lru:(fun lru ->
+          lru_state:=lru; return ()) >>= fun a ->
+      (Lwt_mutex.unlock lru_lock; return a)
+    in
+    { with_lru }
 
-  let async = failwith "FIXME"
+  let async : Tjr_monad.Lwt_instance.lwt async = 
+    fun (f:unit -> (unit,lwt) m) : (unit,lwt) m ->
+                                             
+    (* Lwt.async (fun () -> to_lwt(f ())) *)
+    failwith ""
 
   (* FIXME add a type annot here *)
   let lru_callback_ops = make_lru_callback_ops ~monad_ops ~with_lru_ops ~async
@@ -105,13 +121,13 @@ module Sync_store = Synchronous_store.Make(
   struct
     module Bt_blk_id = struct 
       type t = blk_id
-      let int2t = fun i -> Blk_id i 
-      let t2int = fun (Blk_id i) -> i
+      let int2t = fun i -> i 
+      let t2int = fun ( i) -> i
     end
     module Pc_blk_id = struct 
       type t = blk_id
-      let int2t = fun i -> Blk_id i 
-      let t2int = fun (Blk_id i) -> i
+      let int2t = fun i ->  i 
+      let t2int = fun ( i) -> i
     end
   end)
 
@@ -120,9 +136,7 @@ module Sync_store = Synchronous_store.Make(
 
 (* Q_dcl_btree ------------------------------------------------------ *)
 
-type 'map dcl_bt_msg = (blk_id,'map) Msg.dcl_bt_msg
-
-let q_dcl_btree_ops = queue_ops ()
+(* see Lwt_aux *)
 
 
 
@@ -140,7 +154,7 @@ let q_dcl_btree_ops = queue_ops ()
 
 open Btree_ops
 
-let btree_ops : ('k,'v,blk_id,'t) btree_ops = 
+let btree_ops : (int,int,blk_id,lwt) btree_ops = 
   (* Btree_model.btree_ops ~monad_ops ~with_btree ~get_btree_root_and_incr *)
   failwith "FIXME"
 
@@ -154,7 +168,7 @@ let btree_ops : ('k,'v,blk_id,'t) btree_ops =
    then runs against the B-tree, and records the new root pair. *)
 
 module Btree_t = struct
-  open Msg
+  (* open Msg *)
   open Tjr_mem_queue.Mem_queue
 
   let btree_t ~kvop_map_bindings ~sync_new_roots ~btree_ops ~q_ops ~q_dcl_btree = 
@@ -189,4 +203,63 @@ end
     
     
 
+
+
+(* old ================================================================ *)
+
+(*
+
+(* store ------------------------------------------------------------ *)
+
+
+
+module Fun_store' = struct
+  open Tjr_monad.Types
+  open Fun_store
+
+  (* FIXME probably not needed; used to enforce sequential access to
+     the fun store *)
+  let global_lock = create_mutex()
+
+
+    
+  let from_lwt = Tjr_monad.Lwt_instance.from_lwt
+
+  type ('a,'b) mb_msg = 
+    Set_lru of 'a
+    | With_lru of 'b
+
+  let mb : ('a,'b) mb_msg Lwt_mvar.t = Lwt_mvar.create_empty () 
+
+
+  let fun_store_t ~async = 
+    let rec loop state = 
+      from_lwt (Lwt_mvar.take mb) >>= fun msg ->
+      match msg with
+      | Set_lru lru -> (
+          set lru_state lru state |> loop)
+      | With_lru kk -> (
+          (* Because this is given to the calling thread, there needs
+             to be a way to set the lru state from a non-funstore
+             thread; so we just reuse the mbox; note that this relies
+             on the call to set_lru being made asynchronously, so that
+             the fun_store_t can service the set_lru request *)
+          let set_lru lru = from_lwt (Lwt_mvar.put mb (Set_lru lru)) in
+          from_lwt (Lwt_mutex.lock global_lock) >>= fun () ->
+          from_lwt (Lwt_mutex.lock lru_lock) >>= fun () ->
+          async(fun () ->
+              (kk ~lru:(get lru_state state) ~set_lru:set_lru) >>= fun a ->
+              (Lwt_mutex.unlock lru_lock; return ()));
+          (Lwt_mutex.unlock global_lock; loop state))
+    in
+    fun state -> loop state
+
+  let put msg = 
+    from_lwt(Lwt_mvar.put msg mb)
+
+  let _ = put
+
+  
+
+end
 *)

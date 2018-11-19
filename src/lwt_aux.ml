@@ -1,7 +1,26 @@
-(** Lwt support: Lwt combined with Tjr_store *)
+(** Lwt support: Lwt combined with Tjr_store; includes queue types and ops *)
 
-(* open Lwt *)
-(* open Blk_id_type *)
+include Tjr_monad.Lwt_instance
+(* open Tjr_monad.Lwt_instance *)
+open Tjr_mem_queue.Types
+
+
+(* import lwt  ------------------------------------------------------ *)
+
+(* this isn't quite correct - we want lwt combined with state-passing of the fun_store *)
+
+module Lwt' = struct
+
+  let monad_ops = lwt_ops
+
+  let ( >>= ) = monad_ops.bind
+  let return = monad_ops.return
+
+  let event_ops = lwt_event_ops
+end
+include Lwt'
+
+(* lwt mutex basic funs -------------------------------------------------- *)
 
 (**
 
@@ -25,76 +44,15 @@ end = struct
   let signal cvar = Lwt_condition.broadcast cvar ()
   let wait ~mut ~cvar = Lwt_condition.wait ~mutex:mut cvar
 end
-open A
+include A
 
 
+(* lwt mutex ops, queue_ops ------------------------------------------------ *)
 
-(* In-memory message queue for Lwt ---------------------------------- *)
-
-(** We construct the empty msg queue, and the [q_lru_dcl] reference to
-   an empty message queue *)
-
-open Tjr_mem_queue.Types
-
-(* FIXME maybe avoid the unit arg *)
-let empty () = {
-  q = Queue.create();
-  mutex=create_mutex();
-  cvar=create_cvar()
-}
-
-(** private *)
-module B = struct
-  type ('k,'v,'t) msg' = ('k,'v,'t) Tjr_lru_cache.Msg_type.msg
-
-  type lru_dcl_msg = (int,int,Tjr_store.t) msg'
-
-  let q_lru_dcl : 
-    (Lwt_mutex.t,unit Lwt_condition.t, lru_dcl_msg) queue Tjr_store.Refs.r 
-    = 
-    Fun_store.mk_ref' (empty ())
-end
-let q_lru_dcl = B.q_lru_dcl
-
-
-(** private *)
-module C = struct
-  (* open Dcl_bt_msg_type *)
-  type dcl_bt_msg = (int,int,Tjr_store.t) Dcl_bt_msg_type.dcl_bt_msg
-  
-  let q_dcl_bt :
-    (Lwt_mutex.t,unit Lwt_condition.t, dcl_bt_msg) queue Tjr_store.Refs.r 
-    = 
-    Fun_store.mk_ref' (empty ())
-  
-end
-
-
-
-
-
-(*
-(* lwt monad ops ---------------------------------------------------- *)
-
-(* use lwt *)
-
-open Tjr_monad.Lwt_instance
-
-let monad_ops = lwt_ops
-
-let ( >>= ) = monad_ops.bind
-let return = monad_ops.return
-
-let event_ops = lwt_event_ops
-
-module Lwt_ops = struct
+module Lwt_mutex_ops = struct
 
   (* FIXME move mutex and cvar ops from mem_queue to tjr_monad; give
      lwt impl there *)
-
-  open Tjr_mem_queue
-  open Tjr_mem_queue.Types
-
 
   let mutex_ops : ('m,'c,'t) mutex_ops = {
     create_mutex=(fun () ->
@@ -113,9 +71,69 @@ module Lwt_ops = struct
         Lwt_condition.wait ~mutex:mut cvar |> from_lwt)
   }
 
-  let queue_ops () = Mem_queue.make_ops ~monad_ops ~mutex_ops
+end
+include Lwt_mutex_ops
+
+
+(* In-memory message queue for Lwt ---------------------------------- *)
+
+(** We construct the empty msg queue, and the [q_lru_dcl] reference to
+   an empty message queue *)
+
+module Lwt_queue = struct
+
+  type 'msg lwt_queue_ops = ('msg, (Lwt_mutex.t, unit Lwt_condition.t, 'msg) queue, lwt) queue_ops
 
 end
-include Lwt_ops
+open Lwt_queue
 
-*)
+let queue_ops () = 
+  Tjr_mem_queue.Mem_queue.make_ops ~monad_ops ~mutex_ops
+
+let _ = queue_ops
+
+
+(* FIXME maybe avoid the unit arg *)
+let empty_queue () = {
+  q = Queue.create();
+  mutex=create_mutex();
+  cvar=create_cvar()
+}
+
+
+(* q_lru_dcl -------------------------------------------------------- *)
+
+(** private *)
+module B = struct
+
+  type lru_dcl_msg' = (int,int,Tjr_store.t) Lru_dcl_msg_type.lru_dcl_msg
+
+  let q_lru_dcl : 
+    (Lwt_mutex.t,unit Lwt_condition.t, lru_dcl_msg') queue Tjr_store.Refs.r 
+    = 
+    Fun_store.mk_ref' (empty_queue ())
+
+  let q_lru_dcl_ops : lru_dcl_msg' lwt_queue_ops = queue_ops ()
+end
+let q_lru_dcl = B.q_lru_dcl
+let q_lru_dcl_ops = B.q_lru_dcl_ops
+
+
+(* q_dcl_bt --------------------------------------------------------- *)
+
+(** private *)
+module C = struct
+  (* open Dcl_bt_msg_type *)
+  type dcl_bt_msg' = (int,int,Tjr_store.t) Dcl_bt_msg_type.dcl_bt_msg
+  
+  let q_dcl_bt :
+    (Lwt_mutex.t,unit Lwt_condition.t, dcl_bt_msg') queue Tjr_store.Refs.r 
+    = 
+    Fun_store.mk_ref' (empty_queue ())
+
+  let q_dcl_bt_ops : dcl_bt_msg' lwt_queue_ops = queue_ops ()
+  
+end
+let q_dcl_bt = C.q_dcl_bt
+let q_dcl_bt_ops = C.q_dcl_bt_ops 
+
