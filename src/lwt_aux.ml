@@ -1,5 +1,5 @@
 (** Lwt support: Lwt combined with Tjr_store; includes queue types and ops *)
-
+open Tjr_monad.Types
 include Tjr_monad.Lwt_instance
 (* open Tjr_monad.Lwt_instance *)
 open Tjr_mem_queue.Types
@@ -17,8 +17,16 @@ module Lwt' = struct
   let return = monad_ops.return
 
   let event_ops = lwt_event_ops
+
 end
 include Lwt'
+
+(* async ------------------------------------------------------------ *)
+
+let async : Tjr_monad.Lwt_instance.lwt Tjr_lru_cache.Mt_types.async = 
+  fun (f:unit -> (unit,lwt) m) : (unit,lwt) m ->
+    Lwt.async (fun () -> f () |> to_lwt); return ()
+
 
 (* lwt mutex basic funs -------------------------------------------------- *)
 

@@ -89,9 +89,6 @@ module Lru' = struct
     in
     { with_lru }
 
-  let async : Tjr_monad.Lwt_instance.lwt async = 
-    fun (f:unit -> (unit,lwt) m) : (unit,lwt) m ->
-      Lwt.async (fun () -> f () |> to_lwt); return ()
 
   let lru_callback_ops : (int,int,lwt) mt_callback_ops = 
     make_lru_callback_ops ~monad_ops ~with_lru_ops ~async
@@ -270,14 +267,50 @@ Construct the DCL. Parameters:
     ~bt_find
     ~bt_handle_detach
 
+  let dcl_thread () = 
+    let loop_evictees = 
+      let open Tjr_lru_cache.Entry in
+      let rec loop es = 
+        match es with
+        | [] -> return ()
+        | (k,e)::es -> 
+          match e.entry_type with
+          | Insert { value=v; _ } -> 
+            dcl_ops.insert k v >>= fun () ->
+            loop es
+          | Delete _ -> 
+            dcl_ops.delete k >>= fun () ->
+            loop es
+          | Lower _ -> failwith "unexpected evictee: Lower"
+                         (* FIXME perhaps define a restricted type *)
+      in
+      loop
+    in
+    let rec read_and_dispatch () =
+      q_lru_dcl_ops.dequeue ~q:q_lru_dcl >>= fun msg ->
+      let open Tjr_lru_cache.Msg_type in
+      match msg with
+      | Insert (k,v,callback) ->
+        dcl_ops.insert k v >>= fun () -> 
+        async (fun () -> callback ()) >>= fun () ->
+        read_and_dispatch ()
+      | Delete (k,callback) ->
+        dcl_ops.delete k >>= fun () ->
+        async (fun () -> callback ()) >>= fun () ->
+        read_and_dispatch ()
+      | Find (k,callback) -> 
+        dcl_ops.find k >>= fun v ->
+        async (fun () -> callback v) >>= fun () ->
+        read_and_dispatch ()
+      | Evictees es -> loop_evictees es >>= fun () ->
+        read_and_dispatch ()
+    in
+    read_and_dispatch ()
+        
 end
 
 
-
-
-
-
-(* B-tree/btree ops ------------------------------------------------- *)
+(* B-tree/btree ops/bt thread ------------------------------------------- *)
 
 open Btree_ops
 
