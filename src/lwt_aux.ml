@@ -106,12 +106,12 @@ let empty_queue () = {
 (** private *)
 module B = struct
 
-  type lru_dcl_msg' = (int,int,Tjr_store.t) Lru_dcl_msg_type.lru_dcl_msg
+  type lru_dcl_msg' = (int,int,lwt) Lru_dcl_msg_type.lru_dcl_msg
 
   let q_lru_dcl : 
-    (Lwt_mutex.t,unit Lwt_condition.t, lru_dcl_msg') queue Tjr_store.Refs.r 
+    (Lwt_mutex.t,unit Lwt_condition.t, lru_dcl_msg') queue 
     = 
-    Fun_store.mk_ref' (empty_queue ())
+    (empty_queue ())
 
   let q_lru_dcl_ops : lru_dcl_msg' lwt_queue_ops = queue_ops ()
 end
@@ -124,13 +124,13 @@ let q_lru_dcl_ops = B.q_lru_dcl_ops
 (** private *)
 module C = struct
   (* open Dcl_bt_msg_type *)
-  type dcl_bt_msg' = (int,int,Tjr_store.t) Dcl_bt_msg_type.dcl_bt_msg
+  type dcl_bt_msg' = (int,int,lwt) Dcl_bt_msg_type.dcl_bt_msg
   
   let q_dcl_bt :
-    (Lwt_mutex.t,unit Lwt_condition.t, dcl_bt_msg') queue Tjr_store.Refs.r 
+    (Lwt_mutex.t,unit Lwt_condition.t, dcl_bt_msg') queue 
     = 
-    Fun_store.mk_ref' (empty_queue ())
-
+    (empty_queue ())
+      
   let q_dcl_bt_ops : dcl_bt_msg' lwt_queue_ops = queue_ops ()
   
 end
