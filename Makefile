@@ -2,7 +2,7 @@ DUNE:=opam exec dune
 
 build:
 	$(DUNE) build @install
-	$(DUNE) build bin/tjr_kv_test.exe
+	$(DUNE) build bin/tjr_kv_test.exe bin/test.exe
 
 install:
 	$(DUNE) install
@@ -11,6 +11,7 @@ uninstall:
 	$(DUNE) uninstall
 
 run_tests:
+	$(DUNE) exec bin/test.exe
 	$(DUNE) exec bin/tjr_kv_test.exe
 
 doc: FORCE

@@ -77,14 +77,16 @@ module Lru' = struct
   let lru_lock = Lwt_aux.create_mutex()
   let lru_state : (int,int,lwt) lru_state ref = ref (
       Tjr_lru_cache.Mt_types.mt_initial_state 
-        ~max_size:4 
-        ~evict_count:2 
+        ~max_size:256
+        ~evict_count:64
         ~compare_k:(fun (x:int) y -> Pervasives.compare x y))
 
   (* An empty message queue. NOTE not in funstore *)
   (* let q_lru_dcl = Lwt_aux.empty_queue () *)
   
-  let enqueue msg = q_lru_dcl_ops.enqueue ~q:q_lru_dcl ~msg
+  let enqueue msg = 
+    q_lru_dcl_ops.enqueue ~q:q_lru_dcl ~msg
+
 
   let with_lru_ops : ('msg,'k,int,'t)with_lru_ops = 
     let with_lru f = 
@@ -110,13 +112,23 @@ module Lru' = struct
 
   let _ : (int,int,lwt) mt_ops = lru_ops
 
+  let msg2string = 
+    let open Lru_dcl_msg_type in
+    function
+    | Insert(k,v,_) -> Printf.sprintf "Insert(%d,%d)" k v
+    | Delete(k,_) -> Printf.sprintf "Delete(%d)" k
+    | Find(k,_) -> Printf.sprintf "Find(%d)" k
+    | Evictees es -> Printf.sprintf "Evictees(len=%d)" (List.length es)
 
-  let lru_thread () = 
+  let lru_thread ~yield = 
     let rec enqueue_loop msgs =
       match msgs with
       | [] -> return ()
-      | msg::msgs -> 
-        enqueue msg >>= fun () -> enqueue_loop msgs
+      | msg::msgs ->
+        Printf.printf "lru_thread enqueueing: %s\n%!" (msg2string msg);
+        enqueue msg >>= fun () -> 
+        from_lwt(yield ()) >>= fun () ->
+        enqueue_loop msgs
     in
     let rec enqueue_to_lower () =
       with_lru_ops.with_lru (fun ~lru ~set_lru ->
@@ -234,7 +246,7 @@ Construct the DCL. Parameters:
   let pcache_ops : (int,int,'map,'ptr,'t)dcl_ops = 
     Dcl_dummy_implementation.make_ops
       ~monad_ops
-      ~ops_per_block:2
+      ~ops_per_block:8
       ~new_ptr:(fun xs -> 1+Tjr_list.max_list xs)
       ~with_state:{with_state}
       
@@ -269,11 +281,11 @@ Construct the DCL. Parameters:
   let dcl_ops = make_dcl_ops
     ~monad_ops
     ~pcache_ops
-    ~pcache_blocks_limit:3
+    ~pcache_blocks_limit:128
     ~bt_find
     ~bt_handle_detach
 
-  let dcl_thread () = 
+  let dcl_thread ~yield = 
     let loop_evictees = 
       let open Tjr_lru_cache.Entry in
       let rec loop es = 
@@ -294,7 +306,12 @@ Construct the DCL. Parameters:
     in
     let rec read_and_dispatch () =
       q_lru_dcl_ops.dequeue ~q:q_lru_dcl >>= fun msg ->
+      (* FIXME the following pause seems to require that the btree
+         thread makes progress, but of course it cannot since there
+         are no msgs on the queue *)
+      from_lwt(yield ()) >>= fun () ->
       let open Tjr_lru_cache.Msg_type in
+      Printf.printf "dcl_thread dequeueing: %s\n%!" (Lru'.msg2string msg);
       match msg with
       | Insert (k,v,callback) ->
         dcl_ops.insert k v >>= fun () -> 
@@ -337,7 +354,7 @@ module Btree' = struct
 
   (** The thread listens at the end of the q_dcl_btree for msgs which it
    then runs against the B-tree, and records the new root pair. *)
-  let btree_thread = 
+  let btree_thread ~yield = 
     let rec loop (ops:('k,'v)op list) = 
       match ops with
       | [] -> return ()
@@ -356,6 +373,7 @@ module Btree' = struct
     in
     let rec read_and_dispatch () =
       q_dcl_bt_ops.dequeue ~q:q_dcl_bt >>= fun msg ->
+      from_lwt(yield()) >>= fun () ->
       match msg with
       | Find(k,callback) ->
         btree_ops.find k >>= fun v ->
@@ -373,6 +391,6 @@ module Btree' = struct
           (ptr |> Ptr.t2int);
         read_and_dispatch ()
     in
-    read_and_dispatch
+    read_and_dispatch ()
 end
 

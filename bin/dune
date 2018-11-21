@@ -1,3 +1,3 @@
 (executables
-  (names tjr_kv_test)
-  (libraries tjr_kv))
+  (names tjr_kv_test test)
+  (libraries tjr_kv lwt.unix))
