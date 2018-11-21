@@ -37,6 +37,12 @@
 
 *)
 
+(* TODO
+
+- a functional approach would be nicer (rather than maintaining refs); this likely involves using a new monad, a combination of lwt and state passing
+
+*)
+
 open Tjr_monad.Types
 open Tjr_mem_queue.Types
 
@@ -50,7 +56,7 @@ open Lwt_aux
 
 (* blk_id ----------------------------------------------------------- *)
 
-open Blk_id_type
+(* open Blk_id_type *)
 
 
 (* q_lru_dcl -------------------------------------------------------- *)
@@ -312,135 +318,61 @@ end
 
 (* B-tree/btree ops/bt thread ------------------------------------------- *)
 
-open Btree_ops
+module Btree' = struct
+  open Btree_ops_type
+  open Dummy_btree_implementation
+  open Tjr_pcache.Ins_del_op_type
 
-let btree_ops : (int,int,blk_id,lwt) btree_ops = 
-  (* Btree_model.btree_ops ~monad_ops ~with_btree ~get_btree_root_and_incr *)
-  failwith "FIXME"
-
-(* FIXME what about root pair? *)
-
-
-
-(* B-tree thread ---------------------------------------------------- *)
-
-(** The thread listens at the end of the q_dcl_btree for msgs which it
-   then runs against the B-tree, and records the new root pair. *)
-
-(*
-module Btree_t = struct
-  (* open Msg *)
-  open Tjr_mem_queue.Mem_queue
-
-  let btree_t ~kvop_map_bindings ~sync_new_roots ~btree_ops ~q_ops ~q_dcl_btree = 
-    let { find; insert=bt_insert; delete=bt_delete; sync=bt_sync } = btree_ops in
-    let execute_btree_rollup = 
-      Sync_store.execute_btree_rollup
-        ~monad_ops
-        ~bt_insert
-        ~bt_delete
-        ~bt_sync
-        ~kvop_map_bindings
-        ~sync_new_roots
-    in
-    let rec loop () =
-      q_ops.dequeue ~q:q_dcl_btree >>= fun detach -> 
-      execute_btree_rollup detach >>= fun () ->
-      (* FIXME change ex to return new root *)
-      loop ()
-    in
-    loop
-
-  let _ = btree_t
-
-end
-*)
-
-
-
-
-
-
-    
-    
-
-
-
-(* old ================================================================ *)
-
-(*
-
-(* sync store ------------------------------------------------------- *)
-
-module Sync_store = Synchronous_store.Make(
-  struct
-    module Bt_blk_id = struct 
-      type t = blk_id
-      let int2t = fun i -> i 
-      let t2int = fun ( i) -> i
-    end
-    module Pc_blk_id = struct 
-      type t = blk_id
-      let int2t = fun i ->  i 
-      let t2int = fun ( i) -> i
-    end
-  end)
-
-
-
-
-
-(* store ------------------------------------------------------------ *)
-
-
-
-module Fun_store' = struct
-  open Tjr_monad.Types
-  open Fun_store
-
-  (* FIXME probably not needed; used to enforce sequential access to
-     the fun store *)
-  let global_lock = create_mutex()
-
-
-    
-  let from_lwt = Tjr_monad.Lwt_instance.from_lwt
-
-  type ('a,'b) mb_msg = 
-    Set_lru of 'a
-    | With_lru of 'b
-
-  let mb : ('a,'b) mb_msg Lwt_mvar.t = Lwt_mvar.create_empty () 
-
-
-  let fun_store_t ~async = 
-    let rec loop state = 
-      from_lwt (Lwt_mvar.take mb) >>= fun msg ->
-      match msg with
-      | Set_lru lru -> (
-          set lru_state lru state |> loop)
-      | With_lru kk -> (
-          (* Because this is given to the calling thread, there needs
-             to be a way to set the lru state from a non-funstore
-             thread; so we just reuse the mbox; note that this relies
-             on the call to set_lru being made asynchronously, so that
-             the fun_store_t can service the set_lru request *)
-          let set_lru lru = from_lwt (Lwt_mvar.put mb (Set_lru lru)) in
-          from_lwt (Lwt_mutex.lock global_lock) >>= fun () ->
-          from_lwt (Lwt_mutex.lock lru_lock) >>= fun () ->
-          async(fun () ->
-              (kk ~lru:(get lru_state state) ~set_lru:set_lru) >>= fun a ->
-              (Lwt_mutex.unlock lru_lock; return ()));
-          (Lwt_mutex.unlock global_lock; loop state))
-    in
-    fun state -> loop state
-
-  let put msg = 
-    from_lwt(Lwt_mvar.put msg mb)
-
-  let _ = put
-
+  let state = ref (empty_btree ())
+  let with_state f = 
+    f 
+      ~state:(!state)
+      ~set_state:(fun x -> state:=x; return ())
   
+  let btree_ops : (int,int,bt_ptr,lwt) btree_ops = 
+    make_dummy_btree_ops ~monad_ops ~with_state:{with_state}
 
+
+  open Dcl_bt_msg_type
+
+  (** The thread listens at the end of the q_dcl_btree for msgs which it
+   then runs against the B-tree, and records the new root pair. *)
+  let btree_thread = 
+    let rec loop (ops:('k,'v)op list) = 
+      match ops with
+      | [] -> return ()
+      | op::ops -> 
+        (* FIXME more efficient if we dealt with multiple ops eg insert_many *)
+        (* NOTE the following do not have callbacks, because they come
+           from a flush from the pcache (even if the LRU user
+           requested sync... the sync write is to the pcache) *)
+        match op with
+        | Insert(k,v) -> 
+          btree_ops.insert k v >>= fun () ->
+          loop ops
+        | Delete k -> 
+          btree_ops.delete k >>= fun () ->
+          loop ops
+    in
+    let rec read_and_dispatch () =
+      q_dcl_bt_ops.dequeue ~q:q_dcl_bt >>= fun msg ->
+      match msg with
+      | Find(k,callback) ->
+        btree_ops.find k >>= fun v ->
+        async(fun () -> callback v) >>= fun () ->
+        read_and_dispatch ()
+      | Detach { ops; new_dcl_root } ->
+        loop ops >>= fun () ->
+        (* FIXME what to do with the new root? maybe nothing for the
+           time being? *)
+        (* FIXME what about root pair? *)
+        btree_ops.sync () >>= fun ptr ->        
+        Printf.printf 
+          "New root pair: dcl_root=%d, bt_root=%d\n%!"
+          new_dcl_root
+          (ptr |> Ptr.t2int);
+        read_and_dispatch ()
+    in
+    read_and_dispatch
 end
-*)
+
