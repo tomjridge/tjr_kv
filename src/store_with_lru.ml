@@ -282,7 +282,9 @@ Construct the DCL. Parameters:
 
   let remdups ops =
     ops
-    |> List.map (fun op -> (Ins_del_op_type.op2k op,op))
+    |> List.map (fun op -> (Ins_del_op_type.op2k op,op))    
+    |> List.rev (* we want the most recent to be inserted into map last! *)
+    (* FIXME perhaps add a `Most_recent_first tag *)
     |> fun kvs ->
     Tjr_list.with_each_elt
       ~list:kvs
