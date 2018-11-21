@@ -35,6 +35,7 @@
 
 
 
+
 *)
 
 (* TODO
@@ -46,6 +47,13 @@
 open Tjr_monad.Types
 open Tjr_mem_queue.Types
 
+
+(* configuration parameters ----------------------------------------- *)
+
+let lru_max_size=64
+let lru_evict_count=16
+let dcl_ops_per_block=200
+let pcache_blocks_limit=100
 
 (* lwt ops ---------------------------------------------------- *)
 
@@ -77,8 +85,8 @@ module Lru' = struct
   let lru_lock = Lwt_aux.create_mutex()
   let lru_state : (int,int,lwt) lru_state ref = ref (
       Tjr_lru_cache.Mt_types.mt_initial_state 
-        ~max_size:256
-        ~evict_count:64
+        ~max_size:lru_max_size
+        ~evict_count:lru_evict_count
         ~compare_k:(fun (x:int) y -> Pervasives.compare x y))
 
   (* An empty message queue. NOTE not in funstore *)
@@ -216,6 +224,7 @@ Construct the DCL. Parameters:
       match n >= pcache_blocks_limit with
       | false -> return `No_roll_up_needed
       | true -> 
+        Printf.printf "dcl_thread, maybe_roll_up\n%!";
         pc.detach () >>= fun detach_result ->
         bt_handle_detach detach_result >>= fun () ->
         return `Ok
@@ -241,7 +250,8 @@ Construct the DCL. Parameters:
   (** Now we fill in the missing components: [pcache_ops,
      pcache_blocks_limit, bt_find, bt_detach]. For the time being, we
      would like to use a dummy implementation of pcache_ops *)
-  let dcl_state = Dcl_dummy_implementation.initial_dummy_state ~ptr:0 |> ref
+  let dcl_state = 
+    Dcl_dummy_implementation.initial_dummy_state ~ptr:0 |> ref
 
   let _ = dcl_state
 
@@ -253,7 +263,7 @@ Construct the DCL. Parameters:
   let pcache_ops : (int,int,'map,'ptr,'t)dcl_ops = 
     Dcl_dummy_implementation.make_ops
       ~monad_ops
-      ~ops_per_block:8
+      ~ops_per_block:dcl_ops_per_block
       ~new_ptr:(fun xs -> 1+Tjr_list.max_list xs)
       ~with_state:{with_state}
       
@@ -270,25 +280,37 @@ Construct the DCL. Parameters:
     event_ops.ev_wait ev
 
 
+  let remdups ops =
+    ops
+    |> List.map (fun op -> (Ins_del_op_type.op2k op,op))
+    |> fun kvs ->
+    Tjr_list.with_each_elt
+      ~list:kvs
+      ~step:(fun ~state (k,v) -> Tjr_polymap.add k v state)
+      ~init:(Tjr_polymap.empty Pervasives.compare)
+    |> Tjr_polymap.bindings
+    |> List.map snd
 
   let bt_handle_detach (detach_result:('ptr,detach_result_map)detach_result) =
+    Printf.printf "bt_handle_detach start\n%!";
     let kv_ops : (int,int) Ins_del_op_type.op list = 
-      detach_result.old_map 
-      |> List.map (fun op -> (Ins_del_op_type.op2k op,op))
-      |> Tjr_list.assoc_list_remdups
-      |> List.map snd
+      remdups detach_result.old_map 
     in
+    Printf.printf "bt_handle_detach middle\n%!";
     q_dcl_bt_ops.enqueue
       ~q:q_dcl_bt
       ~msg:Dcl_bt_msg_type.(Detach {
           ops=kv_ops;
-          new_dcl_root=detach_result.new_ptr})
+          new_dcl_root=detach_result.new_ptr}) >>= fun _ ->
+    Printf.printf "bt_handle_detach end\n%!";
+    return ()
+
 
 
   let dcl_ops = make_dcl_ops
     ~monad_ops
     ~pcache_ops
-    ~pcache_blocks_limit:128
+    ~pcache_blocks_limit
     ~bt_find
     ~bt_handle_detach
 
@@ -297,6 +319,7 @@ Construct the DCL. Parameters:
       let open Tjr_lru_cache.Entry in
       let rec loop es = 
         from_lwt(yield ()) >>= fun () ->
+        Printf.printf "dcl_thread, loop_evictees\n%!";
         match es with
         | [] -> return ()
         | (k,e)::es -> 
@@ -307,7 +330,9 @@ Construct the DCL. Parameters:
           | Delete _ -> 
             dcl_ops.delete k >>= fun () ->
             loop es
-          | Lower _ -> failwith "unexpected evictee: Lower"
+          | Lower _ -> 
+            Printf.printf "WARNING!!! unexpected evictee: Lower\n%!";
+            loop es
                          (* FIXME perhaps define a restricted type *)
       in
       loop

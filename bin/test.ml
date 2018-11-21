@@ -9,10 +9,10 @@ let yield = Lwt_main.yield
 
 let test_thread () = 
   let rec loop n = 
+    from_lwt(yield ()) >>= fun () ->
     Printf.printf "Inserting %d\n%!" n;
     let mode = if n mod 100 = 0 then Persist_now else Persist_later in
     Lru'.lru_ops.insert mode n (2*n) >>= fun () ->
-    from_lwt(yield ()) >>= fun () ->
     loop (n+1)
   in
   loop 0

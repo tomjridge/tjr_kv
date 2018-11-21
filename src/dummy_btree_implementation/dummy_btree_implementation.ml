@@ -27,11 +27,9 @@ let empty_btree () : ('k,'v) dummy_bt_state =
   let synced_states = [] in
   { ptr; map; synced_states }
 
-
-let new_ptr ptrs = 
-  ptrs |> List.map Ptr.t2int |> fun ptrs ->
-  (1+Tjr_list.max_list ptrs) |> 
-  Ptr.int2t
+(* NOTE this assumes that ptr is greatest, which it should be given
+   the implementation *)
+let new_ptr state = state.ptr |> Ptr.t2int |> fun x -> x+1 |> Ptr.int2t
 
 
 (** Simple implementation of the B-tree ops, for testing *)
@@ -55,7 +53,7 @@ let make_dummy_btree_ops
   in
   let sync () = with_btree (fun ~state ~set_state ->
       let synced_states = (state.ptr,state.map)::state.synced_states in
-      let ptr = new_ptr (List.map fst synced_states) in
+      let ptr = new_ptr state in
       set_state {state with synced_states;ptr } >>= fun () ->
       return ptr)
   in
