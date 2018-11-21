@@ -122,15 +122,22 @@ module Lru' = struct
 
   let lru_thread ~yield = 
     let rec enqueue_loop msgs =
+      from_lwt(yield ()) >>= fun () ->
       match msgs with
-      | [] -> return ()
+      | [] -> 
+        return ()
       | msg::msgs ->
         Printf.printf "lru_thread enqueueing: %s\n%!" (msg2string msg);
         enqueue msg >>= fun () -> 
-        from_lwt(yield ()) >>= fun () ->
+        Printf.printf "lru_thread enqueued\n%!";
         enqueue_loop msgs
     in
+    (* FIXME this should maybe just batch to lower; FIXME maybe this
+       should sleep until lower is nonempty; maybe use q_lru_dcl
+       directly *)
     let rec enqueue_to_lower () =
+      from_lwt(yield ()) >>= fun () ->
+      Printf.printf "lru_thread enqueue_to_lower loop starts\n%!";
       with_lru_ops.with_lru (fun ~lru ~set_lru ->
           let to_lower = List.rev lru.to_lower in
           set_lru {lru with to_lower=[]} >>= fun () ->
@@ -289,6 +296,7 @@ Construct the DCL. Parameters:
     let loop_evictees = 
       let open Tjr_lru_cache.Entry in
       let rec loop es = 
+        from_lwt(yield ()) >>= fun () ->
         match es with
         | [] -> return ()
         | (k,e)::es -> 
@@ -305,13 +313,14 @@ Construct the DCL. Parameters:
       loop
     in
     let rec read_and_dispatch () =
+      from_lwt(yield ()) >>= fun () ->
+      Printf.printf "dcl_thread read_and_dispatch starts\n%!";
       q_lru_dcl_ops.dequeue ~q:q_lru_dcl >>= fun msg ->
+      Printf.printf "dcl_thread dequeued: %s\n%!" (Lru'.msg2string msg);
       (* FIXME the following pause seems to require that the btree
          thread makes progress, but of course it cannot since there
          are no msgs on the queue *)
-      from_lwt(yield ()) >>= fun () ->
       let open Tjr_lru_cache.Msg_type in
-      Printf.printf "dcl_thread dequeueing: %s\n%!" (Lru'.msg2string msg);
       match msg with
       | Insert (k,v,callback) ->
         dcl_ops.insert k v >>= fun () -> 
@@ -356,6 +365,7 @@ module Btree' = struct
    then runs against the B-tree, and records the new root pair. *)
   let btree_thread ~yield = 
     let rec loop (ops:('k,'v)op list) = 
+      from_lwt(yield()) >>= fun () ->
       match ops with
       | [] -> return ()
       | op::ops -> 
@@ -372,8 +382,9 @@ module Btree' = struct
           loop ops
     in
     let rec read_and_dispatch () =
-      q_dcl_bt_ops.dequeue ~q:q_dcl_bt >>= fun msg ->
       from_lwt(yield()) >>= fun () ->
+      q_dcl_bt_ops.dequeue ~q:q_dcl_bt >>= fun msg ->
+      Printf.printf "btree_thread dequeued: %s\n%!" "-";
       match msg with
       | Find(k,callback) ->
         btree_ops.find k >>= fun v ->
