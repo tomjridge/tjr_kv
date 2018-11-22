@@ -9,6 +9,12 @@ open Tjr_profile
 
 (* setup lru profiler ----------------------------------------------- *)
 
+
+let _ = 
+  let dummy = fun s i -> () in
+  Tjr_lru_cache.Multithreaded_lru.get_profiler_mark := dummy;
+  Tjr_lru_cache.Lru_in_mem.get_profiler_mark := dummy
+  
 let mk_profiler () = 
   mk_profiler ~now:
     Core.Time_stamp_counter.(fun () ->
@@ -17,20 +23,20 @@ let mk_profiler () =
 
 let mt_profiler = mk_profiler ()
 
-let _ = 
-  Tjr_lru_cache.Multithreaded_lru.get_profiler_mark := (fun s ->
-    assert(s="mt_mark");
-    mt_profiler.mark)  
+(* let _ = 
+ *   Tjr_lru_cache.Multithreaded_lru.get_profiler_mark := (fun s ->
+ *       assert(s="mt_mark");
+ *       mt_profiler.mark)   *)
 
 let lru_in_mem = mk_profiler ()
 let get_evictees = mk_profiler ()
 
-let _ = 
-  Tjr_lru_cache.Lru_in_mem.get_profiler_mark := (fun s ->
-      match s with
-      | "lru_in_mem" -> lru_in_mem.mark
-      | "get_evictees" -> get_evictees.mark
-      | _ -> failwith __LOC__)
+(* let _ = 
+ *   Tjr_lru_cache.Lru_in_mem.get_profiler_mark := (fun s ->
+ *       match s with
+ *       | "lru_in_mem" -> lru_in_mem.mark
+ *       | "get_evictees" -> get_evictees.mark
+ *       | _ -> failwith __LOC__) *)
 
 let profiler = 
   (* mt_profiler *)
@@ -95,5 +101,8 @@ get_evictees
 | 2927893144 | bc | ab | 109669 | 26697 |
 | 12811861444 | cd | ab | 7307 | 1753368 |
 
+
+timings
+121953 inserts in 5 s = (/ 121953 5) = 24390/s
 
 *)
