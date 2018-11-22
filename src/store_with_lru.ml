@@ -106,19 +106,21 @@ module Lru' = struct
     { with_lru }
 
 
-  let lru_callback_ops : (int,int,lwt) mt_callback_ops = 
-    make_lru_callback_ops ~monad_ops ~with_lru_ops ~async
+  let lru_callback_ops () : (int,int,lwt) mt_callback_ops = 
+    make_lru_callback_ops ~monad_ops ~async ~with_lru_ops  ~to_lower:enqueue
 
   let _ = lru_callback_ops
 
-  (* the interface we expose to upper levels *)
-  let lru_ops = 
+  (* the interface we expose to upper levels; add a dummy arg so that
+     in test code we can set up profilers ie nothing gets executed at
+     this point *)
+  let lru_ops () = 
     Tjr_lru_cache.Multithreaded_lru.make_lru_ops 
       ~monad_ops 
       ~event_ops
-      ~callback_ops:lru_callback_ops
+      ~callback_ops:(lru_callback_ops ())
 
-  let _ : (int,int,lwt) mt_ops = lru_ops
+  let _ : unit -> (int,int,lwt) mt_ops = lru_ops
 
   let msg2string = 
     let open Lru_dcl_msg_type in
@@ -128,6 +130,7 @@ module Lru' = struct
     | Find(k,_) -> Printf.sprintf "Find(%d)" k
     | Evictees es -> Printf.sprintf "Evictees(len=%d)" (List.length es)
 
+(* old; lru now enqueues directly
   let lru_thread ~yield = 
     let rec enqueue_loop msgs =
       from_lwt(yield ()) >>= fun () ->
@@ -154,6 +157,7 @@ module Lru' = struct
       enqueue_to_lower ()
     in
     enqueue_to_lower ()
+*)
 
 end
 
