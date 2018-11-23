@@ -1,0 +1,6 @@
+{ 
+  "lru_max_size":256,
+  "lru_evict_count":128,
+  "dcl_ops_per_block":50,
+  "pcache_blocks_limit":10
+}

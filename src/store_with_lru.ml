@@ -50,10 +50,9 @@ open Tjr_mem_queue.Types
 
 (* configuration parameters ----------------------------------------- *)
 
-let lru_max_size=64
-let lru_evict_count=16
-let dcl_ops_per_block=200
-let pcache_blocks_limit=100
+open Config
+let { lru_max_size; lru_evict_count; dcl_ops_per_block; pcache_blocks_limit } = 
+  config
 
 (* lwt ops ---------------------------------------------------- *)
 
@@ -130,35 +129,6 @@ module Lru' = struct
     | Find(k,_) -> Printf.sprintf "Find(%d)" k
     | Evictees es -> Printf.sprintf "Evictees(len=%d)" (List.length es)
 
-(* old; lru now enqueues directly
-  let lru_thread ~yield = 
-    let rec enqueue_loop msgs =
-      from_lwt(yield ()) >>= fun () ->
-      match msgs with
-      | [] -> 
-        return ()
-      | msg::msgs ->
-        Printf.printf "lru_thread enqueueing: %s\n%!" (msg2string msg);
-        enqueue msg >>= fun () -> 
-        Printf.printf "lru_thread enqueued\n%!";
-        enqueue_loop msgs
-    in
-    (* FIXME this should maybe just batch to lower; FIXME maybe this
-       should sleep until lower is nonempty; maybe use q_lru_dcl
-       directly *)
-    let rec enqueue_to_lower () =
-      from_lwt(yield ()) >>= fun () ->
-      Printf.printf "lru_thread enqueue_to_lower loop starts\n%!";
-      with_lru_ops.with_lru (fun ~lru ~set_lru ->
-          let to_lower = List.rev lru.to_lower in
-          set_lru {lru with to_lower=[]} >>= fun () ->
-          return to_lower) >>= fun to_lower ->
-      enqueue_loop to_lower >>= fun () ->
-      enqueue_to_lower ()
-    in
-    enqueue_to_lower ()
-*)
-
 end
 
 
@@ -228,7 +198,7 @@ Construct the DCL. Parameters:
       match n >= pcache_blocks_limit with
       | false -> return `No_roll_up_needed
       | true -> 
-        Printf.printf "dcl_thread, maybe_roll_up\n%!";
+        (* Printf.printf "dcl_thread, maybe_roll_up\n%!"; *)
         pc.detach () >>= fun detach_result ->
         bt_handle_detach detach_result >>= fun () ->
         return `Ok
@@ -298,17 +268,17 @@ Construct the DCL. Parameters:
     |> List.map snd
 
   let bt_handle_detach (detach_result:('ptr,detach_result_map)detach_result) =
-    Printf.printf "bt_handle_detach start\n%!";
+    (* Printf.printf "bt_handle_detach start\n%!"; *)
     let kv_ops : (int,int) Ins_del_op_type.op list = 
       remdups detach_result.old_map 
     in
-    Printf.printf "bt_handle_detach middle\n%!";
+    (* Printf.printf "bt_handle_detach middle\n%!"; *)
     q_dcl_bt_ops.enqueue
       ~q:q_dcl_bt
       ~msg:Dcl_bt_msg_type.(Detach {
           ops=kv_ops;
           new_dcl_root=detach_result.new_ptr}) >>= fun _ ->
-    Printf.printf "bt_handle_detach end\n%!";
+    (* Printf.printf "bt_handle_detach end\n%!"; *)
     return ()
 
 
@@ -325,7 +295,7 @@ Construct the DCL. Parameters:
       let open Tjr_lru_cache.Entry in
       let rec loop es = 
         from_lwt(yield ()) >>= fun () ->
-        Printf.printf "dcl_thread, loop_evictees\n%!";
+        (* Printf.printf "dcl_thread, loop_evictees\n%!"; *)
         match es with
         | [] -> return ()
         | (k,e)::es -> 
@@ -337,7 +307,7 @@ Construct the DCL. Parameters:
             dcl_ops.delete k >>= fun () ->
             loop es
           | Lower _ -> 
-            Printf.printf "WARNING!!! unexpected evictee: Lower\n%!";
+            (* Printf.printf "WARNING!!! unexpected evictee: Lower\n%!"; *)
             loop es
                          (* FIXME perhaps define a restricted type *)
       in
@@ -345,9 +315,9 @@ Construct the DCL. Parameters:
     in
     let rec read_and_dispatch () =
       from_lwt(yield ()) >>= fun () ->
-      Printf.printf "dcl_thread read_and_dispatch starts\n%!";
+      (* Printf.printf "dcl_thread read_and_dispatch starts\n%!"; *)
       q_lru_dcl_ops.dequeue ~q:q_lru_dcl >>= fun msg ->
-      Printf.printf "dcl_thread dequeued: %s\n%!" (Lru'.msg2string msg);
+      (* Printf.printf "dcl_thread dequeued: %s\n%!" (Lru'.msg2string msg); *)
       (* FIXME the following pause seems to require that the btree
          thread makes progress, but of course it cannot since there
          are no msgs on the queue *)
@@ -415,7 +385,7 @@ module Btree' = struct
     let rec read_and_dispatch () =
       from_lwt(yield()) >>= fun () ->
       q_dcl_bt_ops.dequeue ~q:q_dcl_bt >>= fun msg ->
-      Printf.printf "btree_thread dequeued: %s\n%!" "-";
+      (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)
       match msg with
       | Find(k,callback) ->
         btree_ops.find k >>= fun v ->

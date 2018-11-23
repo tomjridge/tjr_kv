@@ -1,4 +1,5 @@
 (executables
+  (flags -noassert)
   (names tjr_kv_test test)
-  (libraries tjr_kv lwt.unix tjr_profile))
+  (libraries tjr_kv lwt.unix tjr_profile ocf))
 
