@@ -14,3 +14,12 @@
     to expose when there is a flush of the LRU
 - add a wrapper round pcache so we have an active thread parameterized
   over the bi-directional queue from LRU to pcache
+
+- performance
+  - c. 200k inserts per sec with no prints and no asserts; can we
+    improve further? perhaps look at GC?
+
+
+- latency depends on the number of outstanding msgs on the queues; so
+  we need to keep this low; how to delay user threads? need some sort
+  of delay based on size of queues, particularly the lru_dcl queue

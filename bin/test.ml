@@ -6,6 +6,11 @@ open Lwt_aux
 open Store_with_lru
 open Tjr_profile
 
+let yield () = Lwt.return () (* Lwt_main.yield *)
+
+let sleep f = Lwt_unix.sleep f
+
+open Config
 
 (* setup lru profiler ----------------------------------------------- *)
 
@@ -21,10 +26,9 @@ let profiler = Profile_manager.create_profiler ~name:"lru_in_mem.perform"
 
 let lru_ops = Lru'.lru_ops ()
 
-let yield () = Lwt.return () (* Lwt_main.yield *)
-
 let test_thread () = 
   let rec loop n = 
+    (from_lwt (sleep config.test_thread_delay)) >>= fun () ->
     (* need this yield so that sleeping thread gets a chance to run ? *)
     (if true (* n mod 127 = 0 *) then from_lwt(Lwt_main.yield ()) else return ()) >>= fun () ->
     (if n mod 1000 = 0 then Printf.printf "Inserting %d\n%!" n else ());
@@ -38,11 +42,15 @@ let test_thread () =
 
 let _ =
   Lwt_main.run (Lwt.choose [
-      to_lwt (Dcl'.dcl_thread ~yield);
-      to_lwt (Btree'.btree_thread ~yield);
+      to_lwt (Dcl'.dcl_thread ~yield ~sleep);
+      to_lwt (Btree'.btree_thread ~yield ~sleep);
       to_lwt (test_thread());
       Lwt.(
         Lwt_unix.sleep 5.0 >>= fun () ->
+        Printf.printf "Queue sizes: %d %d\n%!" 
+          (Queue.length q_lru_dcl.q)
+          (Queue.length q_dcl_bt.q)
+        ;
         print_profile_summary (profiler.get_marks()); return ())
 ])
 

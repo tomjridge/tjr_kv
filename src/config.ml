@@ -4,7 +4,10 @@ module S = struct
       lru_max_size:int;
       lru_evict_count:int;
       dcl_ops_per_block:int;
-      pcache_blocks_limit:int
+      pcache_blocks_limit:int;
+      test_thread_delay:float;
+      dcl_thread_delay:float;
+      bt_thread_delay:float;
     } [@@deriving yojson]
   end
   include Config_type

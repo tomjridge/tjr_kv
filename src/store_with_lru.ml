@@ -51,7 +51,7 @@ open Tjr_mem_queue.Types
 (* configuration parameters ----------------------------------------- *)
 
 open Config
-let { lru_max_size; lru_evict_count; dcl_ops_per_block; pcache_blocks_limit } = 
+let { lru_max_size; lru_evict_count; dcl_ops_per_block; pcache_blocks_limit; dcl_thread_delay; bt_thread_delay; _ } = 
   config
 
 (* lwt ops ---------------------------------------------------- *)
@@ -290,7 +290,7 @@ Construct the DCL. Parameters:
     ~bt_find
     ~bt_handle_detach
 
-  let dcl_thread ~yield = 
+  let dcl_thread ~yield ~sleep = 
     let loop_evictees = 
       let open Tjr_lru_cache.Entry in
       let rec loop es = 
@@ -321,6 +321,7 @@ Construct the DCL. Parameters:
       (* FIXME the following pause seems to require that the btree
          thread makes progress, but of course it cannot since there
          are no msgs on the queue *)
+      from_lwt(sleep dcl_thread_delay) >>= fun () ->  (* FIXME *)
       let open Tjr_lru_cache.Msg_type in
       match msg with
       | Insert (k,v,callback) ->
@@ -364,7 +365,7 @@ module Btree' = struct
 
   (** The thread listens at the end of the q_dcl_btree for msgs which it
    then runs against the B-tree, and records the new root pair. *)
-  let btree_thread ~yield = 
+  let btree_thread ~yield ~sleep = 
     let rec loop (ops:('k,'v)op list) = 
       from_lwt(yield()) >>= fun () ->
       match ops with
@@ -385,6 +386,7 @@ module Btree' = struct
     let rec read_and_dispatch () =
       from_lwt(yield()) >>= fun () ->
       q_dcl_bt_ops.dequeue ~q:q_dcl_bt >>= fun msg ->
+      from_lwt(sleep bt_thread_delay) >>= fun () ->  (* FIXME *)
       (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)
       match msg with
       | Find(k,callback) ->
