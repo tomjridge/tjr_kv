@@ -2,3 +2,4 @@
 /bin/.merlin
 /src/.merlin
 _build/
+/dune-project
