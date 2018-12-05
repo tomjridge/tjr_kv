@@ -2,7 +2,7 @@
 
 This is a callback-oriented interface, with operations [find] and
    [detach] (to handle a list of operations... assumed to come from a
-   detach operation via a map (ie no duplicate keys)
+   detach operation via a map ie no duplicate keys)
 
 *)
 open Tjr_monad.Types
