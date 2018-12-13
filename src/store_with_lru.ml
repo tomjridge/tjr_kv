@@ -143,9 +143,11 @@ let q_dcl_bt,q_dcl_bt_ops = Lwt_aux.(q_dcl_bt,q_dcl_bt_ops)
 module Dcl' = struct
 
   open Tjr_pcache
-  open Tjr_pcache.Detachable_chunked_list
+  (* open Tjr_pcache.Detachable_chunked_list *)
 
-  type detach_result_map = (int,int) Ins_del_op_type.op list
+  open Ins_del_op_type
+  open Dcl_types
+  open Dmap_types
 
   (** 
 
@@ -174,10 +176,10 @@ Construct the DCL. Parameters:
   *)
   let make_dcl_ops
       ~monad_ops 
-      ~pcache_ops 
+      ~(pcache_ops:('k,'v,'t)Tjr_pcache.Dmap_types.dmap_as_map_ops)
       ~pcache_blocks_limit 
       ~bt_find
-      ~(bt_handle_detach:('ptr,detach_result_map)detach_result -> (unit,'t)m)
+      ~(bt_handle_detach:('k,'v) dmap_as_map_detach_result -> (unit,'t)m)
     : ('k,'v,'t) Tjr_btree.Map_ops.map_ops 
     =
     (* let open Mref_plus in *)
@@ -185,13 +187,10 @@ Construct the DCL. Parameters:
     let return = monad_ops.return in
     let pc = pcache_ops in
     let find k = 
-      pc.find k >>= fun op ->
-      match op with
+      pc.find k >>= fun v ->
+      match v with
       | None -> bt_find k
-      | Some op ->
-        match op with
-        | Insert(k,v) -> return (Some v)
-        | Delete k -> return None
+      | Some v -> return (Some v)
     in
     let maybe_roll_up () = 
       pc.block_list_length () >>= fun n ->
@@ -204,12 +203,12 @@ Construct the DCL. Parameters:
         return `Ok
     in
     let insert k v =
-      pc.add (Insert(k,v)) >>= fun () -> 
+      pc.insert k v >>= fun () -> 
       maybe_roll_up () >>= fun _ ->
       return ()
     in
     let delete k =
-      pc.add (Delete k) >>= fun () -> 
+      pc.delete k >>= fun () -> 
       maybe_roll_up () >>= fun _ ->
       return ()
     in

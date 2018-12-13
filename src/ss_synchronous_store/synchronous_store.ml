@@ -1,3 +1,5 @@
+(*
+
 (** An uncached kv store *)
 
 (** 
@@ -37,7 +39,9 @@ module Make(Requires : REQUIRES) = struct
       
   open Tjr_btree.Map_ops
 
-  open Tjr_pcache.Detachable_chunked_list
+  open Tjr_pcache.Dcl_types
+  open Tjr_pcache.Dmap_types
+         
 
 
   type bt_blk_id = Bt_blk_id.t
@@ -78,10 +82,10 @@ module Make(Requires : REQUIRES) = struct
     let f detach_result : (unit,'t) m =
       begin
         (* map consists of all the entries we need to roll up *)
-        detach_result.old_map |> kvop_map_bindings |> fun ops ->
+        detach_result.abs_past |> kvop_map_bindings |> fun ops ->
         let rec loop ops = 
           match ops with
-          | [] -> return (`Finished(detach_result.old_ptr,detach_result.new_ptr))  (* FIXME just return detach_result *)
+          | [] -> return (`Finished(detach_result.start_block,detach_result.current_block))  (* FIXME just return detach_result *)
           | v::ops ->
             match v with
             | Insert (k,v) -> bt_insert k v >>= fun () -> loop ops
@@ -165,3 +169,4 @@ module Make(Requires : REQUIRES) = struct
 
 
 end  (* Make *)
+*)
