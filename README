@@ -1,0 +1,26 @@
+-*- org -*-
+
+* tjr_kv
+
+This is a key value store written in OCaml. It uses the B-tree code
+from tjr_btree, but adds an in-memory LRU cache (or just "cache") in
+front, and a persistent cache (pcache) between the cache and the
+B-tree. The pcache and the B-tree are synchronous: updates are written
+directly to disk.
+
+
+* Documentation
+
+FIXME
+
+* Dependencies
+
+opam: 
+<none>
+
+other:
+| tjr_btree     | for the persistent (on-disk) map |
+| tjr_pcache    | for the persistent cache         |
+| tjr_lru_cache | for the in-memory cache          |
+|               |                                  |
+

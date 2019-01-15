@@ -35,6 +35,8 @@
 
 
 
+NOTE We refer to the combination of a DCL and a B-tree as a RUM (for roll-up map).
+
 
 *)
 
@@ -151,11 +153,14 @@ module Dcl' = struct
 
   (** 
 
-Construct the DCL. Parameters:
+
+Construct the DCL, which uses the dmap_as_map_ops and wraps it in a routine which occasionally executes a B-tree roll-up. We call this a "RUM" (roll-up map).
+
+Parameters:
 
 - [monad_ops]
 
-- [pcache_ops]: dcl_ops from tjr_pcache
+- [dmap_as_map_ops]: dcl from tjr_pcache, with dmap interface
 
 - [pcache_blocks_limit]: how many blocks in the pcache before
   attempting a roll-up; if the length of pcache is [>=] this limit, we
@@ -174,9 +179,9 @@ Construct the DCL. Parameters:
   received and acted upon by the dedicated rollup thread
 
   *)
-  let make_dcl_ops
+  let make_rum_ops
       ~monad_ops 
-      ~(pcache_ops:('k,'v,'t)Tjr_pcache.Dmap_types.dmap_as_map_ops)
+      ~(dmap_as_map_ops:('k,'v,'t)Tjr_pcache.Dmap_types.dmap_as_map_ops)
       ~pcache_blocks_limit 
       ~bt_find
       ~(bt_handle_detach:('k,'v) dmap_as_map_detach_result -> (unit,'t)m)
@@ -185,7 +190,7 @@ Construct the DCL. Parameters:
     (* let open Mref_plus in *)
     let ( >>= ) = monad_ops.bind in
     let return = monad_ops.return in
-    let pc = pcache_ops in
+    let pc = dmap_as_map_ops in  (* persistent cache; another name for dmap *)
     let find k = 
       pc.find k >>= fun v ->
       match v with
@@ -218,7 +223,7 @@ Construct the DCL. Parameters:
     in
     { find; insert; delete; insert_many }
 
-  let _ = make_dcl_ops
+  let _ = make_rum_ops
 
   (** Now we fill in the missing components: [pcache_ops,
      pcache_blocks_limit, bt_find, bt_detach]. For the time being, we
@@ -233,14 +238,15 @@ Construct the DCL. Parameters:
       ~state:(!dcl_state)
       ~set_state:(fun x -> dcl_state:=x; return ())
 
-  let pcache_ops : (int,int,'map,'ptr,'t)dcl_ops = 
+  FIXME we really want an implementation that uses polymap, so we can convert to a map
+  let dcl_ops (* pcache_ops *) : ((int,int)op,'map,'ptr,'t)dcl_ops = 
     Dcl_dummy_implementation.make_ops
       ~monad_ops
       ~ops_per_block:dcl_ops_per_block
       ~new_ptr:(fun xs -> 1+Tjr_list.max_list xs)
       ~with_state:{with_state}
       
-  let _ = pcache_ops
+  let _ = dcl_ops
 
   (** NOTE the following enqueues a find event on the msg queue, and
      constructs a promise that waits for the result *)
@@ -266,25 +272,29 @@ Construct the DCL. Parameters:
     |> Tjr_polymap.bindings
     |> List.map snd
 
-  let bt_handle_detach (detach_result:('ptr,detach_result_map)detach_result) =
+  let bt_handle_detach (detach_result:('ptr,'ans)dcl_state) =
     (* Printf.printf "bt_handle_detach start\n%!"; *)
     let kv_ops : (int,int) Ins_del_op_type.op list = 
-      remdups detach_result.old_map 
+      remdups detach_result.abs_past
     in
     (* Printf.printf "bt_handle_detach middle\n%!"; *)
     q_dcl_bt_ops.enqueue
       ~q:q_dcl_bt
       ~msg:Dcl_bt_msg_type.(Detach {
           ops=kv_ops;
-          new_dcl_root=detach_result.new_ptr}) >>= fun _ ->
+          new_dcl_root=detach_result.current_block}) >>= fun _ ->
     (* Printf.printf "bt_handle_detach end\n%!"; *)
     return ()
 
 
+  let dcl_as_dmap_ops = 
+    Detachable_map.convert_dmap_ops_to_map_ops
+      ~dmap_ops:dcl_ops
 
-  let dcl_ops = make_dcl_ops
+
+  let rum_ops = make_rum_ops
     ~monad_ops
-    ~pcache_ops
+    ~dcl_ops (* pcache_ops *)
     ~pcache_blocks_limit
     ~bt_find
     ~bt_handle_detach
