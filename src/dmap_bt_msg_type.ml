@@ -9,10 +9,10 @@ open Tjr_monad.Types
 open Tjr_pcache.Ins_del_op_type  (* FIXME move to fs_shared *)
 open Blk_id_type
 
-type ('k,'v,'t) dcl_bt_msg = 
+type ('k,'v,'t) dmap_bt_msg = 
   | Find of 'k * ('v option -> (unit,'t) m)
   | Detach of {
       ops: ('k,'v) op list;
-      new_dcl_root: blk_id
+      new_dmap_root: blk_id
     }
 

@@ -1,9 +1,9 @@
 { 
   "lru_max_size":256,
   "lru_evict_count":128,
-  "dcl_ops_per_block":50,
-  "pcache_blocks_limit":10,
+  "dmap_ops_per_block":50,
+  "dmap_blocks_limit":10,
   "test_thread_delay":0.000001,
-  "dcl_thread_delay":0.001,
+  "dmap_thread_delay":0.001,
   "bt_thread_delay":0.01
 }

@@ -3,10 +3,10 @@ module S = struct
     type config = {
       lru_max_size:int;
       lru_evict_count:int;
-      dcl_ops_per_block:int;
-      pcache_blocks_limit:int;
+      dmap_ops_per_block:int;
+      dmap_blocks_limit:int;
       test_thread_delay:float;
-      dcl_thread_delay:float;
+      dmap_thread_delay:float;
       bt_thread_delay:float;
     } [@@deriving yojson]
   end

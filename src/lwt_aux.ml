@@ -109,39 +109,39 @@ let empty_queue () = {
 }
 
 
-(* q_lru_dcl -------------------------------------------------------- *)
+(* q_lru_dmap -------------------------------------------------------- *)
 
 (** private *)
 module B = struct
 
-  type lru_dcl_msg' = (int,int,lwt) Lru_dcl_msg_type.lru_dcl_msg
+  type lru_dmap_msg' = (int,int,lwt) Lru_dmap_msg_type.lru_dmap_msg
 
-  let q_lru_dcl : 
-    (Lwt_mutex.t,unit Lwt_condition.t, lru_dcl_msg') queue 
+  let q_lru_dmap : 
+    (Lwt_mutex.t,unit Lwt_condition.t, lru_dmap_msg') queue 
     = 
     (empty_queue ())
 
-  let q_lru_dcl_ops : lru_dcl_msg' lwt_queue_ops = queue_ops ()
+  let q_lru_dmap_ops : lru_dmap_msg' lwt_queue_ops = queue_ops ()
 end
-let q_lru_dcl = B.q_lru_dcl
-let q_lru_dcl_ops = B.q_lru_dcl_ops
+let q_lru_dmap = B.q_lru_dmap
+let q_lru_dmap_ops = B.q_lru_dmap_ops
 
 
-(* q_dcl_bt --------------------------------------------------------- *)
+(* q_dmap_bt --------------------------------------------------------- *)
 
 (** private *)
 module C = struct
-  (* open Dcl_bt_msg_type *)
-  type dcl_bt_msg' = (int,int,lwt) Dcl_bt_msg_type.dcl_bt_msg
+  (* open Dmap_bt_msg_type *)
+  type dmap_bt_msg' = (int,int,lwt) Dmap_bt_msg_type.dmap_bt_msg
   
-  let q_dcl_bt :
-    (Lwt_mutex.t,unit Lwt_condition.t, dcl_bt_msg') queue 
+  let q_dmap_bt :
+    (Lwt_mutex.t,unit Lwt_condition.t, dmap_bt_msg') queue 
     = 
     (empty_queue ())
       
-  let q_dcl_bt_ops : dcl_bt_msg' lwt_queue_ops = queue_ops ()
+  let q_dmap_bt_ops : dmap_bt_msg' lwt_queue_ops = queue_ops ()
   
 end
-let q_dcl_bt = C.q_dcl_bt
-let q_dcl_bt_ops = C.q_dcl_bt_ops 
+let q_dmap_bt = C.q_dmap_bt
+let q_dmap_bt_ops = C.q_dmap_bt_ops 
 

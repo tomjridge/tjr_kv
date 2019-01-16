@@ -42,14 +42,14 @@ let test_thread () =
 
 let _ =
   Lwt_main.run (Lwt.choose [
-      to_lwt (Dcl'.dcl_thread ~yield ~sleep);
+      to_lwt (Dmap'.dmap_thread ~yield ~sleep);
       to_lwt (Btree'.btree_thread ~yield ~sleep);
       to_lwt (test_thread());
       Lwt.(
         Lwt_unix.sleep 5.0 >>= fun () ->
         Printf.printf "Queue sizes: %d %d\n%!" 
-          (Queue.length q_lru_dcl.q)
-          (Queue.length q_dcl_bt.q)
+          (Queue.length q_lru_dmap.q)
+          (Queue.length q_dmap_bt.q)
         ;
         print_profile_summary (profiler.get_marks()); return ())
 ])
@@ -89,7 +89,7 @@ let _ =
 
 - 121953 inserts in 5 s = (/ 121953 5) = 24390/s
 - 552116 inserts in 5s, with only the test thread
-- 122561 inserts in 5s, with dcl thread, but no btree thread
+- 122561 inserts in 5s, with dmap thread, but no btree thread
   - so the bt thread is mostly irrelevant to performance
 
 *)

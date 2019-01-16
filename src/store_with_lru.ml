@@ -7,7 +7,7 @@
   - the queues are kept separate since they are implemented using mutation anyway FIXME perhaps prefer a "functional" version using the functional store
   - includes:
     - lru_state
-    - dcl_state
+    - dmap_state
     - bt_state (a root pointer?)
   - also includes an Lwt_mvar for communication and implementation of with_state
 
@@ -21,21 +21,21 @@
 
 
 
-- DCL
-  - q_dcl_bt (msg queue from dcl to btree)
-  - DCL (detachable chunked list) and dcl_state
-  - DCL thread (Dcl_t)
-    - takes msgs from q_dcl_btree and executes against dcl and B-tree
+- Dmap
+  - q_dmap_bt (msg queue from dmap to btree)
+  - Dmap and dmap_state
+  - Dmap thread (Dmap_t)
+    - takes msgs from q_dmap_btree and executes against dmap and B-tree
 
 
 - B-tree
   - B-tree
-  - B-tree thread (Btree_t) listening to q_dcl_btree
+  - B-tree thread (Btree_t) listening to q_dmap_btree
     - also includes root pair functionality
 
 
 
-NOTE We refer to the combination of a DCL and a B-tree as a RUM (for roll-up map).
+NOTE We refer to the combination of a Dmap and a B-tree as a RUM (for roll-up map).
 
 
 *)
@@ -53,7 +53,7 @@ open Tjr_mem_queue.Types
 (* configuration parameters ----------------------------------------- *)
 
 open Config
-let { lru_max_size; lru_evict_count; dcl_ops_per_block; pcache_blocks_limit; dcl_thread_delay; bt_thread_delay; _ } = 
+let { lru_max_size; lru_evict_count; dmap_ops_per_block; dmap_blocks_limit; dmap_thread_delay; bt_thread_delay; _ } = 
   config
 
 (* lwt ops ---------------------------------------------------- *)
@@ -68,9 +68,9 @@ open Lwt_aux
 (* open Blk_id_type *)
 
 
-(* q_lru_dcl -------------------------------------------------------- *)
+(* q_lru_dmap -------------------------------------------------------- *)
 
-let q_lru_dcl,q_lru_dcl_ops = Lwt_aux.(q_lru_dcl,q_lru_dcl_ops)
+let q_lru_dmap,q_lru_dmap_ops = Lwt_aux.(q_lru_dmap,q_lru_dmap_ops)
 
 
 
@@ -94,7 +94,7 @@ module Lru' = struct
   (* let q_lru_dcl = Lwt_aux.empty_queue () *)
   
   let enqueue msg = 
-    q_lru_dcl_ops.enqueue ~q:q_lru_dcl ~msg
+    q_lru_dmap_ops.enqueue ~q:q_lru_dmap ~msg
 
 
   let with_lru_ops : ('msg,'k,int,'t)with_lru_ops = 
@@ -124,7 +124,7 @@ module Lru' = struct
   let _ : unit -> (int,int,lwt) mt_ops = lru_ops
 
   let msg2string = 
-    let open Lru_dcl_msg_type in
+    let open Lru_dmap_msg_type in
     function
     | Insert(k,v,_) -> Printf.sprintf "Insert(%d,%d)" k v
     | Delete(k,_) -> Printf.sprintf "Delete(%d)" k
@@ -135,34 +135,37 @@ end
 
 
 
-(* q_dcl_bt ------------------------------------------------------ *)
+(* q_dmap_bt ------------------------------------------------------ *)
 
-let q_dcl_bt,q_dcl_bt_ops = Lwt_aux.(q_dcl_bt,q_dcl_bt_ops)
+let q_dmap_bt,q_dmap_bt_ops = Lwt_aux.(q_dmap_bt,q_dmap_bt_ops)
 
 
-(* DCL and dcl_thread --------------------------------------------------- *)
+(* simple freespace ------------------------------------------------- *)
 
-module Dcl' = struct
+let fv =
+  let x = ref 0 in
+  fun () -> (x:=!x+1; !x)
+
+
+(* DMAP and dmap_thread --------------------------------------------------- *)
+
+module Dmap' = struct
 
   open Tjr_pcache
-  (* open Tjr_pcache.Detachable_chunked_list *)
-
-  open Ins_del_op_type
-  open Dcl_types
   open Dmap_types
 
   (** 
 
 
-Construct the DCL, which uses the dmap_as_map_ops and wraps it in a routine which occasionally executes a B-tree roll-up. We call this a "RUM" (roll-up map).
+Construct the DMAP, which uses the dmap_ops and wraps it in a routine which occasionally executes a B-tree roll-up. We call this a "RUM" (roll-up map).
 
 Parameters:
 
 - [monad_ops]
 
-- [dmap_as_map_ops]: dcl from tjr_pcache, with dmap interface
+- [dmap_ops]: dmap from tjr_pcache, with dmap interface
 
-- [pcache_blocks_limit]: how many blocks in the pcache before
+- [dmap_blocks_limit]: how many blocks in the pcache before
   attempting a roll-up; if the length of pcache is [>=] this limit, we
   attempt a roll-up; NOTE that this limit should be >= 2 (if we roll
   up with 1 block, then in fact nothing gets rolled up because we roll
@@ -181,16 +184,16 @@ Parameters:
   *)
   let make_rum_ops
       ~monad_ops 
-      ~(dmap_as_map_ops:('k,'v,'t)Tjr_pcache.Dmap_types.dmap_as_map_ops)
-      ~pcache_blocks_limit 
+      ~(dmap_ops:('k,'v,'ptr,'t) Dmap_types.dmap_ops)
+      ~dmap_blocks_limit 
       ~bt_find
-      ~(bt_handle_detach:('k,'v) dmap_as_map_detach_result -> (unit,'t)m)
+      ~(bt_handle_detach:('k,'v,'ptr) Dmap_types.detach_info -> (unit,'t)m)
     : ('k,'v,'t) Tjr_btree.Map_ops.map_ops 
     =
     (* let open Mref_plus in *)
     let ( >>= ) = monad_ops.bind in
     let return = monad_ops.return in
-    let pc = dmap_as_map_ops in  (* persistent cache; another name for dmap *)
+    let pc = dmap_ops in  (* persistent cache; another name for dmap *)
     let find k = 
       pc.find k >>= fun v ->
       match v with
@@ -199,10 +202,10 @@ Parameters:
     in
     let maybe_roll_up () = 
       pc.block_list_length () >>= fun n ->
-      match n >= pcache_blocks_limit with
+      match n >= dmap_blocks_limit with
       | false -> return `No_roll_up_needed
       | true -> 
-        (* Printf.printf "dcl_thread, maybe_roll_up\n%!"; *)
+        (* Printf.printf "dmap_thread, maybe_roll_up\n%!"; *)
         pc.detach () >>= fun detach_result ->
         bt_handle_detach detach_result >>= fun () ->
         return `Ok
@@ -225,124 +228,103 @@ Parameters:
 
   let _ = make_rum_ops
 
-  (** Now we fill in the missing components: [pcache_ops,
-     pcache_blocks_limit, bt_find, bt_detach]. For the time being, we
-     would like to use a dummy implementation of pcache_ops *)
-  let dcl_state = 
-    Dcl_dummy_implementation.initial_dummy_state ~ptr:0 |> ref
+  (** Now we fill in the missing components: [dmap_ops,
+     dmap_blocks_limit, bt_find, bt_detach]. For the time being, we
+     would like to use a dummy implementation of dmap_ops *)
+  let dmap_state = 
+    Dmap_dummy_implementation.Dummy_state.init_dummy_state ~init_ptr:0 
+    |> ref
 
-  let _ = dcl_state
+  let _ = dmap_state
 
   let with_state f = 
     f 
-      ~state:(!dcl_state)
-      ~set_state:(fun x -> dcl_state:=x; return ())
+      ~state:(!dmap_state)
+      ~set_state:(fun x -> dmap_state:=x; return ())
 
-  FIXME we really want an implementation that uses polymap, so we can convert to a map
-  let dcl_ops (* pcache_ops *) : ((int,int)op,'map,'ptr,'t)dcl_ops = 
-    Dcl_dummy_implementation.make_ops
+  (* FIXME we really want an implementation that uses polymap, so we can convert to a map *)
+  let dmap_ops (* pcache_ops *) : ('op,'map,'ptr,'t)dmap_ops = 
+    Dmap_dummy_implementation.make_dmap_ops
       ~monad_ops
-      ~ops_per_block:dcl_ops_per_block
-      ~new_ptr:(fun xs -> 1+Tjr_list.max_list xs)
+      ~ops_per_block:dmap_ops_per_block
+      ~alloc_ptr:(fun () -> return (fv()))
       ~with_state:{with_state}
       
-  let _ = dcl_ops
+  let _ : (int,int,'ptr,'t) dmap_ops = dmap_ops
 
   (** NOTE the following enqueues a find event on the msg queue, and
      constructs a promise that waits for the result *)
   let bt_find = fun k ->
     event_ops.ev_create () >>= fun ev ->
     let callback = fun v -> event_ops.ev_signal ev v in
-    q_dcl_bt_ops.enqueue 
-      ~q:q_dcl_bt 
-      ~msg:Dcl_bt_msg_type.(Find(k,callback)) >>= fun () ->
+    q_dmap_bt_ops.enqueue 
+      ~q:q_dmap_bt 
+      ~msg:Dmap_bt_msg_type.(Find(k,callback)) >>= fun () ->
     event_ops.ev_wait ev
 
-
-  let remdups ops =
-    ops
-    |> List.map (fun op -> (Ins_del_op_type.op2k op,op))    
-    |> List.rev (* we want the most recent to be inserted into map last! *)
-    (* FIXME perhaps add a `Most_recent_first tag *)
-    |> fun kvs ->
-    Tjr_list.with_each_elt
-      ~list:kvs
-      ~step:(fun ~state (k,v) -> Tjr_polymap.add k v state)
-      ~init:(Tjr_polymap.empty Pervasives.compare)
-    |> Tjr_polymap.bindings
-    |> List.map snd
-
-  let bt_handle_detach (detach_result:('ptr,'ans)dcl_state) =
+  let bt_handle_detach (detach_info:('k,'v,'ptr)detach_info) =
     (* Printf.printf "bt_handle_detach start\n%!"; *)
-    let kv_ops : (int,int) Ins_del_op_type.op list = 
-      remdups detach_result.abs_past
-    in
-    (* Printf.printf "bt_handle_detach middle\n%!"; *)
-    q_dcl_bt_ops.enqueue
-      ~q:q_dcl_bt
-      ~msg:Dcl_bt_msg_type.(Detach {
+    let kv_op_map = Tjr_pcache.Op_aux.default_kvop_map_ops () in
+    let kv_ops = detach_info.past_map |> kv_op_map.map_bindings |> List.map snd in
+    q_dmap_bt_ops.enqueue
+      ~q:q_dmap_bt
+      ~msg:Dmap_bt_msg_type.(Detach {
           ops=kv_ops;
-          new_dcl_root=detach_result.current_block}) >>= fun _ ->
+          new_dmap_root=detach_info.current_ptr}) >>= fun _ ->
     (* Printf.printf "bt_handle_detach end\n%!"; *)
     return ()
 
-
-  let dcl_as_dmap_ops = 
-    Detachable_map.convert_dmap_ops_to_map_ops
-      ~dmap_ops:dcl_ops
-
-
   let rum_ops = make_rum_ops
     ~monad_ops
-    ~dcl_ops (* pcache_ops *)
-    ~pcache_blocks_limit
+    ~dmap_ops (* pcache_ops *)
+    ~dmap_blocks_limit
     ~bt_find
     ~bt_handle_detach
 
-  let dcl_thread ~yield ~sleep = 
+  let dmap_thread ~yield ~sleep = 
     let loop_evictees = 
       let open Tjr_lru_cache.Entry in
       let rec loop es = 
         from_lwt(yield ()) >>= fun () ->
-        (* Printf.printf "dcl_thread, loop_evictees\n%!"; *)
+        (* Printf.printf "dmap_thread, loop_evictees\n%!"; *)
         match es with
         | [] -> return ()
         | (k,e)::es -> 
           match e.entry_type with
           | Insert { value=v; _ } -> 
-            dcl_ops.insert k v >>= fun () ->
+            dmap_ops.insert k v >>= fun () ->
             loop es
           | Delete _ -> 
-            dcl_ops.delete k >>= fun () ->
+            dmap_ops.delete k >>= fun () ->
             loop es
           | Lower _ -> 
             (* Printf.printf "WARNING!!! unexpected evictee: Lower\n%!"; *)
             loop es
-                         (* FIXME perhaps define a restricted type *)
+            (* FIXME perhaps define a restricted type *)
       in
       loop
     in
     let rec read_and_dispatch () =
       from_lwt(yield ()) >>= fun () ->
-      (* Printf.printf "dcl_thread read_and_dispatch starts\n%!"; *)
-      q_lru_dcl_ops.dequeue ~q:q_lru_dcl >>= fun msg ->
-      (* Printf.printf "dcl_thread dequeued: %s\n%!" (Lru'.msg2string msg); *)
+      (* Printf.printf "dmap_thread read_and_dispatch starts\n%!"; *)
+      q_lru_dmap_ops.dequeue ~q:q_lru_dmap >>= fun msg ->
+      (* Printf.printf "dmap_thread dequeued: %s\n%!" (Lru'.msg2string msg); *)
       (* FIXME the following pause seems to require that the btree
          thread makes progress, but of course it cannot since there
          are no msgs on the queue *)
-      from_lwt(sleep dcl_thread_delay) >>= fun () ->  (* FIXME *)
+      from_lwt(sleep dmap_thread_delay) >>= fun () ->  (* FIXME *)
       let open Tjr_lru_cache.Msg_type in
       match msg with
       | Insert (k,v,callback) ->
-        dcl_ops.insert k v >>= fun () -> 
+        dmap_ops.insert k v >>= fun () -> 
         async (fun () -> callback ()) >>= fun () ->
         read_and_dispatch ()
       | Delete (k,callback) ->
-        dcl_ops.delete k >>= fun () ->
+        dmap_ops.delete k >>= fun () ->
         async (fun () -> callback ()) >>= fun () ->
         read_and_dispatch ()
       | Find (k,callback) -> 
-        dcl_ops.find k >>= fun v ->
+        dmap_ops.find k >>= fun v ->
         async (fun () -> callback v) >>= fun () ->
         read_and_dispatch ()
       | Evictees es -> loop_evictees es >>= fun () ->
@@ -370,9 +352,9 @@ module Btree' = struct
     make_dummy_btree_ops ~monad_ops ~with_state:{with_state}
 
 
-  open Dcl_bt_msg_type
+  open Dmap_bt_msg_type
 
-  (** The thread listens at the end of the q_dcl_btree for msgs which it
+  (** The thread listens at the end of the q_dmap_btree for msgs which it
    then runs against the B-tree, and records the new root pair. *)
   let btree_thread ~yield ~sleep = 
     let rec loop (ops:('k,'v)op list) = 
@@ -394,7 +376,7 @@ module Btree' = struct
     in
     let rec read_and_dispatch () =
       from_lwt(yield()) >>= fun () ->
-      q_dcl_bt_ops.dequeue ~q:q_dcl_bt >>= fun msg ->
+      q_dmap_bt_ops.dequeue ~q:q_dmap_bt >>= fun msg ->
       from_lwt(sleep bt_thread_delay) >>= fun () ->  (* FIXME *)
       (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)
       match msg with
@@ -402,18 +384,41 @@ module Btree' = struct
         btree_ops.find k >>= fun v ->
         async(fun () -> callback v) >>= fun () ->
         read_and_dispatch ()
-      | Detach { ops; new_dcl_root } ->
+      | Detach { ops; new_dmap_root } ->
         loop ops >>= fun () ->
         (* FIXME what to do with the new root? maybe nothing for the
            time being? *)
         (* FIXME what about root pair? *)
         btree_ops.sync () >>= fun ptr ->        
         Printf.printf 
-          "New root pair: dcl_root=%d, bt_root=%d\n%!"
-          new_dcl_root
+          "New root pair: dmap_root=%d, bt_root=%d\n%!"
+          new_dmap_root
           (ptr |> Ptr.t2int);
         read_and_dispatch ()
     in
     read_and_dispatch ()
 end
+
+
+(*
+  let remdups ops =
+    ops
+    |> List.map (fun op -> (Ins_del_op_type.op2k op,op))    
+    |> List.rev (* we want the most recent to be inserted into map last! *)
+    (* FIXME perhaps add a `Most_recent_first tag *)
+    |> fun kvs ->
+    Tjr_list.with_each_elt
+      ~list:kvs
+      ~step:(fun ~state (k,v) -> Tjr_polymap.add k v state)
+      ~init:(Tjr_polymap.empty Pervasives.compare)
+    |> Tjr_polymap.bindings
+    |> List.map snd
+*)
+
+
+
+(*  let dmap_as_dmap_ops = 
+    Detachable_map.convert_dmap_ops_to_map_ops
+      ~dmap_ops:dmap_ops
+*)
 

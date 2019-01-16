@@ -1,7 +1,7 @@
 open Tjr_monad.Types
 open Tjr_lru_cache.Entry
 
-type ('k,'v,'t) lru_dcl_msg 
+type ('k,'v,'t) lru_dmap_msg
   = ('k,'v,'t) Tjr_lru_cache.Msg_type.msg
   =  Insert of 'k*'v*(unit -> (unit,'t)m)
   | Delete of 'k*(unit -> (unit,'t)m)
