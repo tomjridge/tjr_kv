@@ -13,9 +13,8 @@ bug-reports: "https://github.com/tomjridge/tjr_kv/issues"
 # ----------------------------------------------------------------------
 
 depends: [
-#  "ocf"
-  "tjr_pcache"
   "tjr_btree"
+  "tjr_pcache"
   "tjr_lru_cache"
   "tjr_mem_queue"
 ]

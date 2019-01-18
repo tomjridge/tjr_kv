@@ -1,6 +1,6 @@
 -*- org -*-
 
-* tjr_kv
+* tjr_kv, a key-value store for OCaml
 
 This is a key value store written in OCaml. It uses the B-tree code
 from tjr_btree, but adds an in-memory LRU cache (or just "cache") in
@@ -11,16 +11,17 @@ directly to disk.
 
 * Documentation
 
-FIXME
+For ocamldoc, see https://tomjridge.github.io/tjr_imp_build_script/
+
 
 * Dependencies
 
 opam: 
 <none>
 
-other:
+tjr:
 | tjr_btree     | for the persistent (on-disk) map |
 | tjr_pcache    | for the persistent cache         |
 | tjr_lru_cache | for the in-memory cache          |
-|               |                                  |
+| tjr_mem_queue | inter-thread communication       |
 
