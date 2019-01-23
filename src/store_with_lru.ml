@@ -188,7 +188,7 @@ Parameters:
       ~dmap_blocks_limit 
       ~bt_find
       ~(bt_handle_detach:('k,'v,'ptr) Dmap_types.detach_info -> (unit,'t)m)
-    : ('k,'v,'t) Tjr_btree.Map_ops.map_ops 
+    : ('k,'v,'t) Tjr_fs_shared.Map_ops.map_ops 
     =
     (* let open Mref_plus in *)
     let ( >>= ) = monad_ops.bind in
