@@ -228,8 +228,9 @@ Parameters:
 
   let _ = make_rum_ops
 
-  (** Now we fill in the missing components: [dmap_ops,
-     dmap_blocks_limit, bt_find, bt_detach]. For the time being, we
+  (** Now we fill in the missing components: [dmap_ops, dmap_blocks_limit, bt_find, bt_detach]. 
+
+      For the time being, we
      would like to use a dummy implementation of dmap_ops *)
   let dmap_state = 
     Dmap_dummy_implementation.Dummy_state.init_dummy_state ~init_ptr:0 
