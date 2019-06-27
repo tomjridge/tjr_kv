@@ -1,0 +1,9 @@
+sudo: required
+services:
+  - docker
+
+script:
+   - make -C .dockerfile all 
+
+after_script:
+  - docker images
