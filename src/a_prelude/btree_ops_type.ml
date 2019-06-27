@@ -1,4 +1,4 @@
-open Tjr_monad.Types
+
 
 (* FIXME also include "batch" op *)
 

@@ -5,8 +5,8 @@ This is a callback-oriented interface, with operations [find] and
    detach operation via a map ie no duplicate keys)
 
 *)
-open Tjr_monad.Types
-open Tjr_pcache.Ins_del_op_type  (* FIXME move to fs_shared *)
+
+open Ins_del_op  (* FIXME move to fs_shared *)
 open Blk_id_type
 
 type ('k,'v,'t) dmap_bt_msg = 

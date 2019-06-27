@@ -1,4 +1,4 @@
-open Tjr_monad.Types
+
 
 (** A persistent map is formed from a B-tree and a detachable map
    (dmap).

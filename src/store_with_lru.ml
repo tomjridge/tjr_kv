@@ -46,7 +46,7 @@ NOTE We refer to the combination of a Dmap and a B-tree as a RUM (for roll-up ma
 
 *)
 
-open Tjr_monad.Types
+
 open Tjr_mem_queue.Types
 
 

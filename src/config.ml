@@ -11,7 +11,16 @@ module S = struct
     } [@@deriving yojson]
   end
   include Config_type
-  let filename="config.json"
+  let default_config = Some {
+    lru_max_size=256;
+    lru_evict_count=128;
+    dmap_ops_per_block=50;
+    dmap_blocks_limit=10;
+    test_thread_delay=0.000001;
+    dmap_thread_delay=0.001;
+    bt_thread_delay=0.01
+  }
+  let filename="tjr_kv_config.json"
 end
 include S.Config_type
 

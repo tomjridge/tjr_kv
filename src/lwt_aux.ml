@@ -1,5 +1,5 @@
 (** Lwt support: Lwt combined with Tjr_store; includes queue types and ops *)
-open Tjr_monad.Types
+
 include Tjr_monad.Lwt_instance
 (* open Tjr_monad.Lwt_instance *)
 open Tjr_mem_queue.Types

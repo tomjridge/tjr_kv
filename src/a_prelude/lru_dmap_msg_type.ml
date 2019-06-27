@@ -1,4 +1,4 @@
-open Tjr_monad.Types
+(* FIXME entry needs to be in pcache_intf probably *)
 open Tjr_lru_cache.Entry
 
 type ('k,'v,'t) lru_dmap_msg
