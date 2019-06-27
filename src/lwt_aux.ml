@@ -1,13 +1,10 @@
 (** Lwt support: Lwt combined with Tjr_store; includes queue types and ops *)
 
-include Tjr_monad.Lwt_instance
-(* open Tjr_monad.Lwt_instance *)
-open Tjr_mem_queue.Types
+open Tjr_monad.With_lwt
+open Tjr_mem_queue.Memq_intf
+open Kv_intf
 
-
-(* import lwt  ------------------------------------------------------ *)
-
-(* this isn't quite correct - we want lwt combined with state-passing of the fun_store *)
+(* FIXME this isn't quite correct - we want lwt combined with state-passing of the fun_store *)
 
 module Lwt' = struct
 
@@ -21,23 +18,19 @@ module Lwt' = struct
 end
 include Lwt'
 
-(* async ------------------------------------------------------------ *)
 
-let async : Tjr_monad.Lwt_instance.lwt Tjr_lru_cache.Mt_types.async = 
+(** async for lwt *)
+let async : Tjr_monad.With_lwt.lwt Tjr_lru_cache.Mt_intf.async = 
   fun (f:unit -> (unit,lwt) m) : (unit,lwt) m ->
     Lwt.async (fun () -> f () |> to_lwt); return ()
 
 
-(* lwt mutex basic funs -------------------------------------------------- *)
+(** {2 lwt mutex basic funs} *)
 
-(**
+(** We want the msg queue type to be a {! Tjr_store} ref. *)
 
-We want the msg queue type to be a {! Tjr_store} ref.
-
-*)
-
-(** private; basic support from lwt. NOTE lock and wait are in Lwt.t *)
-module A : sig
+(* private; basic support from lwt. NOTE lock and wait are in Lwt.t *)
+module Internal : sig
   val create_mutex : unit -> Lwt_mutex.t
   val create_cvar : unit -> 'a Lwt_condition.t
   val lock : Lwt_mutex.t -> unit Lwt.t
@@ -52,13 +45,12 @@ end = struct
   let signal cvar = Lwt_condition.broadcast cvar ()
   let wait ~mut ~cvar = Lwt_condition.wait ~mutex:mut cvar
 end
-include A
+include Internal
 
 
-(* lwt mutex ops, queue_ops ------------------------------------------------ *)
+(** {2 lwt mutex ops, msg queue_ops} *)
 
 module Lwt_mutex_ops = struct
-
   (* FIXME move mutex and cvar ops from mem_queue to tjr_monad; give
      lwt impl there *)
 
@@ -83,22 +75,19 @@ end
 include Lwt_mutex_ops
 
 
-(* In-memory message queue for Lwt ---------------------------------- *)
+(** {2 In-memory message queue for Lwt} *)
 
 (** We construct the empty msg queue, and the [q_lru_dcl] reference to
    an empty message queue *)
 
 module Lwt_queue = struct
-
-  type 'msg lwt_queue_ops = ('msg, (Lwt_mutex.t, unit Lwt_condition.t, 'msg) queue, lwt) queue_ops
-
+  type 'msg lwt_queue_ops = ('msg, (Lwt_mutex.t, unit Lwt_condition.t, 'msg) queue, lwt) memq_ops
 end
 open Lwt_queue
 
-let queue_ops () = 
-  Tjr_mem_queue.Mem_queue.make_ops ~monad_ops ~mutex_ops
+let queue_ops () = make_memq_ops ~monad_ops ~mutex_ops
 
-let _ = queue_ops
+let _ : unit -> ('a, (Lwt_mutex.t, unit Lwt_condition.t, 'a) queue, lwt) memq_ops = queue_ops
 
 
 (* FIXME maybe avoid the unit arg *)
@@ -109,12 +98,10 @@ let empty_queue () = {
 }
 
 
-(* q_lru_dmap -------------------------------------------------------- *)
+(** {2 q_lru_dmap} *)
 
-(** private *)
-module B = struct
-
-  type lru_dmap_msg' = (int,int,lwt) Lru_dmap_msg_type.lru_dmap_msg
+module Internal2 = struct  
+  type lru_dmap_msg' = (int,int,lwt) Msg_lru_dmap.lru_dmap_msg
 
   let q_lru_dmap : 
     (Lwt_mutex.t,unit Lwt_condition.t, lru_dmap_msg') queue 
@@ -123,16 +110,15 @@ module B = struct
 
   let q_lru_dmap_ops : lru_dmap_msg' lwt_queue_ops = queue_ops ()
 end
-let q_lru_dmap = B.q_lru_dmap
-let q_lru_dmap_ops = B.q_lru_dmap_ops
+let q_lru_dmap = Internal2.q_lru_dmap
+let q_lru_dmap_ops = Internal2.q_lru_dmap_ops
 
 
-(* q_dmap_bt --------------------------------------------------------- *)
+(** {2 q_dmap_bt } *)
 
-(** private *)
-module C = struct
+module Internal3 = struct
   (* open Dmap_bt_msg_type *)
-  type dmap_bt_msg' = (int,int,lwt) Dmap_bt_msg_type.dmap_bt_msg
+  type dmap_bt_msg' = (int,int,lwt) Msg_dmap_bt.dmap_bt_msg
   
   let q_dmap_bt :
     (Lwt_mutex.t,unit Lwt_condition.t, dmap_bt_msg') queue 
@@ -142,6 +128,6 @@ module C = struct
   let q_dmap_bt_ops : dmap_bt_msg' lwt_queue_ops = queue_ops ()
   
 end
-let q_dmap_bt = C.q_dmap_bt
-let q_dmap_bt_ops = C.q_dmap_bt_ops 
+let q_dmap_bt = Internal3.q_dmap_bt
+let q_dmap_bt_ops = Internal3.q_dmap_bt_ops 
 

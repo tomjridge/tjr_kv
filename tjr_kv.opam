@@ -1,14 +1,15 @@
-opam-version: "2.0"
-name: "tjr_kv"
-version: "0.0.1"
+opam-version : "2.0"
+name         : "tjr_kv"
+version      : "0.0.1"
+synopsis     : "A key-value store for OCaml"
 
 # ----------------------------------------------------------------------
 
-maintainer: "Tom Ridge <tom.j.ridge@googlemail.com>"
-authors: "Tom Ridge <tom.j.ridge@googlemail.com>"
-homepage: "https://github.com/tomjridge/tjr_kv"
-bug-reports: "https://github.com/tomjridge/tjr_kv/issues"
-# dev-repo: "https://github.com/tomjridge/tjr_kv.git"
+maintainer   : "Tom Ridge <tom.j.ridge@googlemail.com>"
+authors      : "Tom Ridge <tom.j.ridge@googlemail.com>"
+homepage     : "https://github.com/tomjridge/tjr_kv"
+bug-reports  : "https://github.com/tomjridge/tjr_kv/issues"
+dev-repo     : "git+https://github.com/tomjridge/tjr_kv.git"
 
 # ----------------------------------------------------------------------
 
@@ -22,6 +23,5 @@ depends: [
 # ----------------------------------------------------------------------
 
 build: [
-#  ["dune" "subst"] {pinned}
   ["dune" "build" "-p" name "-j" jobs]
 ]

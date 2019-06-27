@@ -1,7 +1,7 @@
 (** An in-mem B-tree with sync, for testing. *)
 
-
-open Btree_ops_type
+open Kv_intf
+open Btree_ops
 
 module Ptr = Int_.Make_type_isomorphic_to_int()
 

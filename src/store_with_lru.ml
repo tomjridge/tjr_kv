@@ -46,58 +46,44 @@ NOTE We refer to the combination of a Dmap and a B-tree as a RUM (for roll-up ma
 
 *)
 
-
-open Tjr_mem_queue.Types
-
-
-(* configuration parameters ----------------------------------------- *)
+open Tjr_monad.With_lwt
+open Kv_intf
+open Lwt_aux  (* provides various msg queues *)
 
 open Config
-let { lru_max_size; lru_evict_count; dmap_ops_per_block; dmap_blocks_limit; dmap_thread_delay; bt_thread_delay; _ } = 
+let { lru_max_size; lru_evict_count; dmap_ops_per_block;
+      dmap_blocks_limit; dmap_thread_delay; bt_thread_delay; _ } =
   config
-
-(* lwt ops ---------------------------------------------------- *)
-
-(* see lwt_aux *)
-
-open Lwt_aux
-
-
-(* blk_id ----------------------------------------------------------- *)
-
-(* open Blk_id_type *)
-
-
-(* q_lru_dmap -------------------------------------------------------- *)
-
-let q_lru_dmap,q_lru_dmap_ops = Lwt_aux.(q_lru_dmap,q_lru_dmap_ops)
-
-
-
-(* lru -------------------------------------------------------------- *)
 
 
 module Lru' = struct
-  open Tjr_lru_cache.Multithreaded_lru
-
-  let from_lwt = Tjr_monad.Lwt_instance.from_lwt
-  let to_lwt = Tjr_monad.Lwt_instance.to_lwt
+         
+  let from_lwt = With_lwt.from_lwt
+  let to_lwt = With_lwt.to_lwt
          
   let lru_lock = Lwt_aux.create_mutex()
-  let lru_state : (int,int,lwt) lru_state ref = ref (
-      Tjr_lru_cache.Mt_types.mt_initial_state 
+  let lru_state  : (int,int,_,_,_) lru_state ref = ref (
+      Tjr_lru_cache.Mt_intf.mt_initial_state 
         ~max_size:lru_max_size
         ~evict_count:lru_evict_count
-        ~compare_k:(fun (x:int) y -> Pervasives.compare x y))
+        (* FIXME pervasives.compare *)
+        ~compare_k:(fun (x:int) y -> Pervasives.compare x y)) 
+
+  let _ :
+(int, int, (int, int Tjr_lru_cache.Im_intf.entry, unit) Tjr_map.map,
+ (int, (int, With_lwt.lwt) blocked_thread list, unit) Tjr_map.map,
+ With_lwt.lwt)
+lru_state ref
+= lru_state
 
   (* An empty message queue. NOTE not in funstore *)
   (* let q_lru_dcl = Lwt_aux.empty_queue () *)
   
   let enqueue msg = 
-    q_lru_dmap_ops.enqueue ~q:q_lru_dmap ~msg
+    q_lru_dmap_ops.memq_enqueue ~q:q_lru_dmap ~msg
 
 
-  let with_lru_ops : ('msg,'k,int,'t)with_lru_ops = 
+  let with_lru_ops (* : ('msg,'k,int,'t)with_lru_ops *) = 
     let with_lru f = 
       from_lwt (Lwt_mutex.lock lru_lock) >>= fun () ->
       f ~lru:(!lru_state) ~set_lru:(fun lru ->
@@ -107,7 +93,7 @@ module Lru' = struct
     { with_lru }
 
 
-  let lru_callback_ops () : (int,int,lwt) mt_callback_ops = 
+  let lru_callback_ops () : (int,int,lwt) Mt_callback_ops.mt_callback_ops = 
     make_lru_callback_ops ~monad_ops ~async ~with_lru_ops  ~to_lower:enqueue
 
   let _ = lru_callback_ops
@@ -116,7 +102,7 @@ module Lru' = struct
      in test code we can set up profilers ie nothing gets executed at
      this point *)
   let lru_ops () = 
-    Tjr_lru_cache.Multithreaded_lru.make_lru_ops 
+    make_lru_ops 
       ~monad_ops 
       ~event_ops
       ~callback_ops:(lru_callback_ops ())
@@ -124,7 +110,7 @@ module Lru' = struct
   let _ : unit -> (int,int,lwt) mt_ops = lru_ops
 
   let msg2string = 
-    let open Lru_dmap_msg_type in
+    let open Msg_lru_dmap in
     function
     | Insert(k,v,_) -> Printf.sprintf "Insert(%d,%d)" k v
     | Delete(k,_) -> Printf.sprintf "Delete(%d)" k
@@ -134,20 +120,17 @@ module Lru' = struct
 end
 
 
+(** {2 simple freespace} *)
 
-(* q_dmap_bt ------------------------------------------------------ *)
-
-let q_dmap_bt,q_dmap_bt_ops = Lwt_aux.(q_dmap_bt,q_dmap_bt_ops)
-
-
-(* simple freespace ------------------------------------------------- *)
-
+module Alloc = struct
 let fv =
   let x = ref 0 in
   fun () -> (x:=!x+1; !x)
+end
+open Alloc
 
 
-(* DMAP and dmap_thread --------------------------------------------------- *)
+(** {2 DMAP and dmap_thread } *)
 
 module Dmap' = struct
 
@@ -155,7 +138,6 @@ module Dmap' = struct
   open Dmap_types
 
   (** 
-
 
 Construct the DMAP, which uses the dmap_ops and wraps it in a routine which occasionally executes a B-tree roll-up. We call this a "RUM" (roll-up map).
 
@@ -188,7 +170,7 @@ Parameters:
       ~dmap_blocks_limit 
       ~bt_find
       ~(bt_handle_detach:('k,'v,'ptr) Dmap_types.detach_info -> (unit,'t)m)
-    : ('k,'v,'t) Tjr_fs_shared.Map_ops.map_ops 
+    (* : ('k,'v,'t) Tjr_fs_shared.Map_ops.map_ops  *)
     =
     (* let open Mref_plus in *)
     let ( >>= ) = monad_ops.bind in
@@ -220,11 +202,11 @@ Parameters:
       maybe_roll_up () >>= fun _ ->
       return ()
     in
-    let insert_many k v kvs = 
+    let _insert_many k v kvs = 
       (* FIXME we should do something smarter here *)
       insert k v >>= fun () -> return kvs
     in
-    { find; insert; delete; insert_many }
+    `Run (find, insert, delete) 
 
   let _ = make_rum_ops
 
@@ -258,18 +240,18 @@ Parameters:
   let bt_find = fun k ->
     event_ops.ev_create () >>= fun ev ->
     let callback = fun v -> event_ops.ev_signal ev v in
-    q_dmap_bt_ops.enqueue 
+    q_dmap_bt_ops.memq_enqueue 
       ~q:q_dmap_bt 
-      ~msg:Dmap_bt_msg_type.(Find(k,callback)) >>= fun () ->
+      ~msg:Msg_dmap_bt.(Find(k,callback)) >>= fun () ->
     event_ops.ev_wait ev
 
   let bt_handle_detach (detach_info:('k,'v,'ptr)detach_info) =
     (* Printf.printf "bt_handle_detach start\n%!"; *)
     let kv_op_map = Tjr_pcache.Op_aux.default_kvop_map_ops () in
-    let kv_ops = detach_info.past_map |> kv_op_map.map_bindings |> List.map snd in
-    q_dmap_bt_ops.enqueue
+    let kv_ops = detach_info.past_map |> kv_op_map.bindings |> List.map snd in
+    q_dmap_bt_ops.memq_enqueue
       ~q:q_dmap_bt
-      ~msg:Dmap_bt_msg_type.(Detach {
+      ~msg:Msg_dmap_bt.(Detach {
           ops=kv_ops;
           new_dmap_root=detach_info.current_ptr}) >>= fun _ ->
     (* Printf.printf "bt_handle_detach end\n%!"; *)
@@ -284,13 +266,15 @@ Parameters:
 
   let dmap_thread ~yield ~sleep = 
     let loop_evictees = 
-      let open Tjr_lru_cache.Entry in
+      (* let open Tjr_lru_cache.Entry in *)
       let rec loop es = 
         from_lwt(yield ()) >>= fun () ->
         (* Printf.printf "dmap_thread, loop_evictees\n%!"; *)
         match es with
         | [] -> return ()
         | (k,e)::es -> 
+          let open Im_intf in
+          let open Mt_intf in
           match e.entry_type with
           | Insert { value=v; _ } -> 
             dmap_ops.insert k v >>= fun () ->
@@ -308,13 +292,12 @@ Parameters:
     let rec read_and_dispatch () =
       from_lwt(yield ()) >>= fun () ->
       (* Printf.printf "dmap_thread read_and_dispatch starts\n%!"; *)
-      q_lru_dmap_ops.dequeue ~q:q_lru_dmap >>= fun msg ->
+      q_lru_dmap_ops.memq_dequeue q_lru_dmap >>= fun msg ->
       (* Printf.printf "dmap_thread dequeued: %s\n%!" (Lru'.msg2string msg); *)
       (* FIXME the following pause seems to require that the btree
          thread makes progress, but of course it cannot since there
          are no msgs on the queue *)
       from_lwt(sleep dmap_thread_delay) >>= fun () ->  (* FIXME *)
-      let open Tjr_lru_cache.Msg_type in
       match msg with
       | Insert (k,v,callback) ->
         dmap_ops.insert k v >>= fun () -> 
