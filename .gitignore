@@ -1,5 +1,4 @@
 /tjr_kv.install
-/bin/.merlin
-/src/.merlin
+.merlin
 _build/
 /dune-project
