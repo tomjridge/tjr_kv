@@ -2,3 +2,4 @@
 .merlin
 _build/
 /dune-project
+/tjr_kv_config.json

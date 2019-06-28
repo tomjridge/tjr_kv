@@ -10,10 +10,14 @@ directly to disk.
 
 ![](https://docs.google.com/drawings/d/e/2PACX-1vQc8669_M4bqjDZNCC9KoUYSx7ZNOWbGMtUOiZJFfgoLGc3jFZeamg6_BydB_ZzhZ4CViHV1q-t0QZh/pub?w=960&amp;h=720)
 
+The LRU should provide (but doesn't currently!) an interface similar to:
+
+![2019-06-28.142813](/tmp/l/github/an_imp/d_tjr_kv/README.assets/2019-06-28.142813.png)
 
 ## Quick links
 
-* For ocamldoc, see https://tomjridge.github.io/tjr_kv/
+* For ocamldoc, see <https://tomjridge.github.io/tjr_kv/>
+* The main interfaces are in <https://tomjridge.github.io/tjr_kv/tjr_kv/Tjr_kv/Kv_intf/index.html>
 
 ## Glossary
 

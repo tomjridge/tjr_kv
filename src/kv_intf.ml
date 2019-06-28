@@ -39,6 +39,9 @@ end
 
 module Msg_lru_dmap = struct
 
+  include Tjr_lru_cache.Im_intf.Entry.Export
+
+  (* FIXME this should probably be moved to fs_shared *)
   type ('k,'v,'t) lru_dmap_msg
     = ('k,'v,'t) Tjr_lru_cache.Mt_intf.msg
     =  Insert of 'k*'v*(unit -> (unit,'t)m)
@@ -49,7 +52,7 @@ module Msg_lru_dmap = struct
 end
 
 
-
+(*
 module Pmap = struct
   (** A persistent map is formed from a B-tree and a detachable map
       (dmap).
@@ -69,11 +72,11 @@ module Pmap = struct
     delete: 'k -> (unit,'t)m;
   }
 end
-
+*)
 
 module Syncable_map = struct
 
-
+  (** {2 Simple syncable map} *)
 
   (** A syncable map API.
 
@@ -88,9 +91,31 @@ module Syncable_map = struct
     find: 'k -> ('v option,'t)m;
     insert: 'k -> 'v -> (unit,'t)m;
     delete: 'k -> (unit,'t)m;
+    batch: persist_mode -> [ `Delete of 'k | `Insert of ('k*'v) ] list -> (unit,'t)m;
     sync: unit -> ('ptr,'t)m;
     ksync: 'k -> ('ptr,'t)m;
     ks_sync: 'k list -> ('ptr,'t)m
   }
+
+
+  (** {2 Extended syncable map} *)
+
+  (* open Mt_intf *)
+  include Mt_intf.Persist_mode
+  
+  (** Extended version; includes a "persist mode" (ie "now" or
+     "later") and the sync operations *)
+  type ('k,'v,'ptr,'t) syncable_map_with_pmode = {
+    find: 'k -> ('v option,'t)m;
+    insert: persist_mode -> 'k -> 'v -> (unit,'t)m;
+    delete: persist_mode -> 'k -> (unit,'t)m;
+    batch: persist_mode -> [ `Delete of 'k | `Insert of ('k*'v) ] list -> (unit,'t)m;
+    sync: unit -> ('ptr,'t)m;
+    ksync: 'k -> ('ptr,'t)m;
+    ks_sync: 'k list -> ('ptr,'t)m
+  }
+
+
+  
 end
 

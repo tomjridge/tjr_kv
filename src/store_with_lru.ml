@@ -55,6 +55,7 @@ let { lru_max_size; lru_evict_count; dmap_ops_per_block;
       dmap_blocks_limit; dmap_thread_delay; bt_thread_delay; _ } =
   config
 
+let lru_profiler = ref @@ Tjr_profile.make_string_profiler ~now:(fun () -> 0)
 
 module Lru' = struct
          
@@ -80,7 +81,11 @@ lru_state ref
   (* let q_lru_dcl = Lwt_aux.empty_queue () *)
   
   let enqueue msg = 
-    q_lru_dmap_ops.memq_enqueue ~q:q_lru_dmap ~msg
+    return () >>= fun () ->
+    !lru_profiler.mark "l2d:aa";
+    q_lru_dmap_ops.memq_enqueue ~q:q_lru_dmap ~msg >>= fun r -> 
+    !lru_profiler.mark "l2d:ab";
+    return r
 
 
   let with_lru_ops (* : ('msg,'k,int,'t)with_lru_ops *) = 
@@ -131,6 +136,8 @@ open Alloc
 
 
 (** {2 DMAP and dmap_thread } *)
+
+let dmap_profiler = ref @@ Tjr_profile.make_string_profiler ~now:(fun () -> 0)
 
 module Dmap' = struct
 
@@ -240,21 +247,25 @@ Parameters:
   let bt_find = fun k ->
     event_ops.ev_create () >>= fun ev ->
     let callback = fun v -> event_ops.ev_signal ev v in
-    q_dmap_bt_ops.memq_enqueue 
+    !dmap_profiler.mark "d2b:aa"; 
+    q_dmap_bt_ops.memq_enqueue
       ~q:q_dmap_bt 
       ~msg:Msg_dmap_bt.(Find(k,callback)) >>= fun () ->
+    !dmap_profiler.mark "d2b:ab"; 
     event_ops.ev_wait ev
 
   let bt_handle_detach (detach_info:('k,'v,'ptr)detach_info) =
     (* Printf.printf "bt_handle_detach start\n%!"; *)
     let kv_op_map = Tjr_pcache.Op_aux.default_kvop_map_ops () in
     let kv_ops = detach_info.past_map |> kv_op_map.bindings |> List.map snd in
+    !dmap_profiler.mark "d2b:ca"; 
     q_dmap_bt_ops.memq_enqueue
       ~q:q_dmap_bt
       ~msg:Msg_dmap_bt.(Detach {
           ops=kv_ops;
           new_dmap_root=detach_info.current_ptr}) >>= fun _ ->
     (* Printf.printf "bt_handle_detach end\n%!"; *)
+    !dmap_profiler.mark "d2b:cb"; 
     return ()
 
   let rum_ops = make_rum_ops
@@ -264,7 +275,9 @@ Parameters:
     ~bt_find
     ~bt_handle_detach
 
-  let dmap_thread ~yield ~sleep = 
+  let _ = rum_ops
+
+  let dmap_thread ~yield ~sleep () = 
     let loop_evictees = 
       (* let open Tjr_lru_cache.Entry in *)
       let rec loop es = 
@@ -292,7 +305,9 @@ Parameters:
     let rec read_and_dispatch () =
       from_lwt(yield ()) >>= fun () ->
       (* Printf.printf "dmap_thread read_and_dispatch starts\n%!"; *)
+      !dmap_profiler.mark "dmap:l2d.deq1";
       q_lru_dmap_ops.memq_dequeue q_lru_dmap >>= fun msg ->
+      !dmap_profiler.mark "dmap:l2d.deq2";
       (* Printf.printf "dmap_thread dequeued: %s\n%!" (Lru'.msg2string msg); *)
       (* FIXME the following pause seems to require that the btree
          thread makes progress, but of course it cannot since there
@@ -311,7 +326,9 @@ Parameters:
         dmap_ops.find k >>= fun v ->
         async (fun () -> callback v) >>= fun () ->
         read_and_dispatch ()
-      | Evictees es -> loop_evictees es >>= fun () ->
+      | Evictees es -> 
+        !dmap_profiler.mark "dmap:loop_evictees";
+        loop_evictees es >>= fun () ->
         read_and_dispatch ()
     in
     read_and_dispatch ()
@@ -320,6 +337,8 @@ end
 
 
 (* B-tree/btree ops/bt thread ------------------------------------------- *)
+
+let bt_profiler = ref @@ Tjr_profile.make_string_profiler ~now:(fun () -> 0)
 
 module Btree' = struct
   open Btree_ops
@@ -340,7 +359,7 @@ module Btree' = struct
 
   (** The thread listens at the end of the q_dmap_btree for msgs which it
    then runs against the B-tree, and records the new root pair. *)
-  let btree_thread ~yield ~sleep = 
+  let btree_thread ~yield ~sleep () = 
     let rec loop (ops:('k,'v)op list) = 
       from_lwt(yield()) >>= fun () ->
       match ops with
@@ -360,7 +379,9 @@ module Btree' = struct
     in
     let rec read_and_dispatch () =
       from_lwt(yield()) >>= fun () ->
+      !bt_profiler.mark "d2b:ea"; 
       q_dmap_bt_ops.memq_dequeue q_dmap_bt >>= fun msg ->
+      !bt_profiler.mark "d2b:eb"; 
       from_lwt(sleep bt_thread_delay) >>= fun () ->  (* FIXME *)
       (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)
       match msg with

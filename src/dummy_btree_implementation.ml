@@ -37,16 +37,19 @@ let new_ptr state = state.ptr |> Ptr.t2int |> fun x -> x+1 |> Ptr.int2t
 let make_dummy_btree_ops 
     ~monad_ops ~with_state
   : ('k,'v,'blk_id,'t) btree_ops 
-  = 
+  =
   let ( >>= ) = monad_ops.bind in
   let return = monad_ops.return in
   let with_btree = with_state.with_state in
+  let count = ref 0 in
   (* FIXME pervasives.compare *)
   let map_ops = Tjr_map.make_map_ops Pervasives.compare in
   let find k = with_btree (fun ~state ~set_state -> 
       map_ops.find_opt k state.map |> return)
   in
   let insert k v = with_btree (fun ~state ~set_state -> 
+      count:=!count+1;
+      (if !count mod (int_of_float 1e5) = 0 then Printf.printf "B-tree, %d inserts\n%!" !count else ());
       map_ops.add k v state.map |> fun map ->
       set_state {state with map})
   in
