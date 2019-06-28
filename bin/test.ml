@@ -1,10 +1,11 @@
 (** Test the KV store with an LRU frontend *)
 
-open Tjr_lru_cache.Persist_mode
+(* open Tjr_lru_cache.Persist_mode *)
+open Util
+open Tjr_monad.With_lwt
 open Tjr_kv
 open Lwt_aux
 open Store_with_lru
-open Tjr_profile
 
 let yield () = Lwt.return () (* Lwt_main.yield *)
 
@@ -14,13 +15,7 @@ open Config
 
 (* setup lru profiler ----------------------------------------------- *)
 
-let _ =
-  Profile_manager.now := 
-    Core.Time_stamp_counter.(fun () ->
-        now () |> to_int63 |> Core.Int63.to_int |> fun (Some x) -> x)
-[@@ocaml.warning "-8"]
-
-let profiler = Profile_manager.create_profiler ~name:"lru_in_mem.perform"
+let profiler = Tjr_profile.make_string_profiler ~now
 
 (* test thread ------------------------------------------------------ *)
 
@@ -51,7 +46,7 @@ let _ =
           (Queue.length q_lru_dmap.q)
           (Queue.length q_dmap_bt.q)
         ;
-        print_profile_summary (profiler.get_marks()); return ())
+        profiler.print_summary (); return ())
 ])
 
 

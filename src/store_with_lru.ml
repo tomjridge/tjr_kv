@@ -134,7 +134,7 @@ open Alloc
 
 module Dmap' = struct
 
-  open Tjr_pcache
+  (* open Tjr_pcache *)
   open Dmap_types
 
   (** 
@@ -274,7 +274,7 @@ Parameters:
         | [] -> return ()
         | (k,e)::es -> 
           let open Im_intf in
-          let open Mt_intf in
+          (* let open Mt_intf in *)
           match e.entry_type with
           | Insert { value=v; _ } -> 
             dmap_ops.insert k v >>= fun () ->
@@ -322,9 +322,9 @@ end
 (* B-tree/btree ops/bt thread ------------------------------------------- *)
 
 module Btree' = struct
-  open Btree_ops_type
+  open Btree_ops
   open Dummy_btree_implementation
-  open Tjr_pcache.Ins_del_op_type
+  open Ins_del_op
 
   let state = ref (empty_btree ())
   let with_state f = 
@@ -336,7 +336,7 @@ module Btree' = struct
     make_dummy_btree_ops ~monad_ops ~with_state:{with_state}
 
 
-  open Dmap_bt_msg_type
+  open Msg_dmap_bt
 
   (** The thread listens at the end of the q_dmap_btree for msgs which it
    then runs against the B-tree, and records the new root pair. *)
@@ -360,7 +360,7 @@ module Btree' = struct
     in
     let rec read_and_dispatch () =
       from_lwt(yield()) >>= fun () ->
-      q_dmap_bt_ops.dequeue ~q:q_dmap_bt >>= fun msg ->
+      q_dmap_bt_ops.memq_dequeue q_dmap_bt >>= fun msg ->
       from_lwt(sleep bt_thread_delay) >>= fun () ->  (* FIXME *)
       (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)
       match msg with

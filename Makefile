@@ -1,4 +1,4 @@
-DUNE:=opam exec dune
+DUNE:=dune
 
 build:
 	$(DUNE) build @install
