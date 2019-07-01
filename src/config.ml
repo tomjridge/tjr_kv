@@ -1,17 +1,19 @@
+module Config_type = struct
+  type config = {
+    lru_max_size                 :int;
+    lru_evict_count              :int;
+    dmap_ops_per_block           :int;
+    dmap_blocks_limit            :int;
+    test_thread_yield_iterations :int;  (* num iterations between yields *)
+    test_thread_delay_iterations :int;  (* num iterations before sleeping *)
+    test_thread_delay            :float;
+    dmap_thread_delay            :float;
+    bt_thread_delay              :float;
+  } [@@deriving yojson]
+end
+include Config_type
+
 module S = struct
-  module Config_type = struct
-    type config = {
-      lru_max_size                 :int;
-      lru_evict_count              :int;
-      dmap_ops_per_block           :int;
-      dmap_blocks_limit            :int;
-      test_thread_yield_iterations :int;  (* num iterations between yields *)
-      test_thread_delay_iterations :int;  (* num iterations before sleeping *)
-      test_thread_delay            :float;
-      dmap_thread_delay            :float;
-      bt_thread_delay              :float;
-    } [@@deriving yojson]
-  end
   include Config_type
   let default_config = Some {
       lru_max_size                 =256;
@@ -26,6 +28,5 @@ module S = struct
     }
   let filename="tjr_kv_config.json"
 end
-include S.Config_type
 
 include Tjr_config.Make(S)

@@ -2,33 +2,38 @@
 
 (** We construct:
 
-- XXX Actually, work with references first XXX Functional store thread
+Functional store thread  
   - this maintains the "global" state, including locks etc
-  - the queues are kept separate since they are implemented using mutation anyway FIXME perhaps prefer a "functional" version using the functional store
+  - the queues are kept separate since they are implemented using
+    mutation anyway FIXME perhaps prefer a "functional" version using
+    the functional store
   - includes:
     - lru_state
     - dmap_state
     - bt_state (a root pointer?)
-  - also includes an Lwt_mvar for communication and implementation of with_state
+  - also includes an Lwt_mvar for communication and implementation of
+    with_state
 
 
 
-- LRU
+LRU
   - q_lru_dcl (msg queue from lru to dcl)
   - Lru (and lru_state)
-  - Lru_t, which takes messages from lru.to_lower to enqueue on q_lru_dcl
+  - Lru_t, which takes messages from lru.to_lower to enqueue on
+    q_lru_dcl
 
 
 
 
-- Dmap
+Dmap
   - q_dmap_bt (msg queue from dmap to btree)
   - Dmap and dmap_state
   - Dmap thread (Dmap_t)
-    - takes msgs from q_dmap_btree and executes against dmap and B-tree
+    - takes msgs from q_dmap_btree and executes against dmap and
+      B-tree
 
 
-- B-tree
+B-tree
   - B-tree
   - B-tree thread (Btree_t) listening to q_dmap_btree
     - also includes root pair functionality
@@ -57,7 +62,9 @@ let { lru_max_size; lru_evict_count; dmap_ops_per_block;
 
 let lru_profiler = ref @@ Tjr_profile.make_string_profiler ~now:(fun () -> 0)
 
-module Lru' = struct
+module Lru' : sig 
+  val lru_ops : unit -> (int, int, lwt) mt_ops
+end = struct
          
   let from_lwt = With_lwt.from_lwt
   let to_lwt = With_lwt.to_lwt
@@ -125,7 +132,7 @@ lru_state ref
 end
 
 
-(** {2 simple freespace} *)
+(** {2 Simple freespace impl using an incrementing int ref} *)
 
 module Alloc = struct
 let fv =
@@ -135,11 +142,15 @@ end
 open Alloc
 
 
-(** {2 DMAP and dmap_thread } *)
+(** {2 Dmap and dmap_thread } *)
 
 let dmap_profiler = ref @@ Tjr_profile.make_string_profiler ~now:(fun () -> 0)
 
-module Dmap' = struct
+module Dmap' : sig
+  val dmap_thread :
+    yield:(unit -> unit Lwt.t) ->
+    sleep:(float -> unit Lwt.t) -> unit -> ('a, lwt) m
+end = struct
 
   (* open Tjr_pcache *)
   open Dmap_types
@@ -340,7 +351,11 @@ end
 
 let bt_profiler = ref @@ Tjr_profile.make_string_profiler ~now:(fun () -> 0)
 
-module Btree' = struct
+module Btree' : sig
+  val btree_thread :
+    yield:(unit -> unit Lwt.t) ->
+    sleep:(float -> unit Lwt.t) -> unit -> ('a, lwt) m
+end = struct
   open Btree_ops
   open Dummy_btree_implementation
   open Ins_del_op
