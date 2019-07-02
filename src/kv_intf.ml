@@ -131,7 +131,7 @@ module Msg_btree_rootman = struct
 end
 
 (** These types are common to almost all the components (well, perhaps
-   the root manager deals with blks rather than kvrt *)
+   the root manager deals with blks rather than kvrt) *)
 module type KVRT = sig
   type k
   type v
