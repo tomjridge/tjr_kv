@@ -53,6 +53,10 @@ We use the following type variables/ fixed types:
 
 * We have tried to use records for the interfaces (rather than, say, signatures and functors) where possible. This was to enable switching of implementations at runtime. Nowadays this is perhaps better achieved with first-class modules.
 
+* When listing type parameters, we try to stick to the following order: k, v, r/blk_id, blk, node, leaf, leaf_stream, t
+
+  
+
 ## Dependencies
 
 | Description   | Comment                        |
