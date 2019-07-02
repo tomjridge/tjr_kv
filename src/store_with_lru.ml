@@ -82,10 +82,9 @@ end = struct
  (int, (int, With_lwt.lwt) blocked_thread list, unit) Tjr_map.map,
  With_lwt.lwt)
 lru_state ref
-= lru_state
-
-  (* An empty message queue. NOTE not in funstore *)
-  (* let q_lru_dcl = Lwt_aux.empty_queue () *)
+    = lru_state
+  
+  
   
   let enqueue msg = 
     return () >>= fun () ->
@@ -94,6 +93,8 @@ lru_state ref
     !lru_profiler.mark "l2d:ab";
     return r
 
+  let to_lower = enqueue  (* NOTE used in lru_callback_ops below FIXME
+                             perhaps rename this type *)
 
   let with_lru_ops (* : ('msg,'k,int,'t)with_lru_ops *) = 
     let with_lru f = 
@@ -106,7 +107,7 @@ lru_state ref
 
 
   let lru_callback_ops () : (int,int,lwt) Mt_callback_ops.mt_callback_ops = 
-    make_lru_callback_ops ~monad_ops ~async ~with_lru_ops  ~to_lower:enqueue
+    make_lru_callback_ops ~monad_ops ~async ~with_lru_ops  ~to_lower
 
   let _ = lru_callback_ops
 

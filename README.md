@@ -12,7 +12,16 @@ directly to disk.
 
 The LRU should provide (but doesn't currently!) an interface similar to:
 
-![2019-06-28.142813](/tmp/l/github/an_imp/d_tjr_kv/README.assets/2019-06-28.142813.png)
+![2019-06-28.142813](README.assets/2019-06-28.142813.png)
+
+There are various components, message queues, etc. These are shown above and have names like: Lru, Dmap, Btree, Rootman. The following gives some idea of how these are arranged and how the types work out:
+
+
+![](README.assets/thread_and_message_types-2019-07-02.153644.png)
+
+The internal state of each component is partly documented by the following:
+
+![2019-07-02.160130](README.assets/state_types-2019-07-02.160130.png)
 
 ## Quick links
 
@@ -29,6 +38,20 @@ The LRU should provide (but doesn't currently!) an interface similar to:
 * Persistent cache, or pcache: see Dmap.
 * Roll-up map, or RUM: a detachable map linked to a B-tree. At intervals, the tail of the dmap is detached and inserted into the B-tree.
 * Root manager: for on-disk entities, the root manager tracks the root block from which the entity can be reconstructed. For example, each B-tree has a root block, which typically contains pointers to further blocks. The dmap is another example of an on-disk entity with a root block.
+
+## OCaml naming conventions
+
+We use the following type variables/ fixed types:
+
+* k for keys
+* v for values
+* r for pointers (integers); typically the same as block identifiers
+* blk_id for block identifiers (integers)
+* t for the generic monad phantom type
+
+## OCaml code style
+
+* We have tried to use records for the interfaces (rather than, say, signatures and functors) where possible. This was to enable switching of implementations at runtime. Nowadays this is perhaps better achieved with first-class modules.
 
 ## Dependencies
 
