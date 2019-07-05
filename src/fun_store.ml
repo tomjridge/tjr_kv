@@ -6,11 +6,11 @@
    add to Tjr_store *)
 let set,get = Tjr_store.(set,get)
 
-let test_store = ref Tjr_store.initial_store
+let test_store = ref (Tjr_store.empty_fstore ())
 
 let mk_ref' v = 
   !test_store |> fun t ->
-  Tjr_store.mk_ref v t |> fun (t,r) ->
+  Tjr_store.mk_ref v t |> fun (r,t) ->
   test_store:=t;
   r
 

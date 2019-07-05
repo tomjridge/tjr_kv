@@ -1,18 +1,15 @@
 (** A KV store with the LRU frontend. *)
 
-(** We construct:
+(** We construct the following.
 
 Functional store thread  
   - this maintains the "global" state, including locks etc
   - the queues are kept separate since they are implemented using
     mutation anyway FIXME perhaps prefer a "functional" version using
     the functional store
-  - includes:
-    - lru_state
-    - dmap_state
-    - bt_state (a root pointer?)
+  - includes: lru_state; dmap_state; btree_state (a root pointer?)
   - also includes an Lwt_mvar for communication and implementation of
-    with_state
+    with_state (?FIXME still true?)
 
 
 
@@ -41,6 +38,15 @@ B-tree
 
 
 NOTE We refer to the combination of a Dmap and a B-tree as a RUM (for roll-up map).
+
+{%html:
+<img src='https://docs.google.com/drawings/d/e/2PACX-1vQc8669_M4bqjDZNCC9KoUYSx7ZNOWbGMtUOiZJFfgoLGc3jFZeamg6_BydB_ZzhZ4CViHV1q-t0QZh/pub?w=960&amp;h=720'></img>
+
+<img src='https://github.com/tomjridge/tjr_kv/raw/master/README.assets/thread_and_message_types-2019-07-02.153644.png'></img>
+
+<img src='https://github.com/tomjridge/tjr_kv/raw/master/README.assets/state_types-2019-07-02.160130.png'/>
+
+%}
 
 
 *)
