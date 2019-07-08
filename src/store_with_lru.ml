@@ -62,9 +62,6 @@ open Kv_intf
 open Lwt_aux  (* provides various msg queues *)
 
 open Config
-let { lru_max_size; lru_evict_count; dmap_ops_per_block;
-      dmap_blocks_limit; dmap_thread_delay; bt_thread_delay; _ } =
-  config
 
 let lru_profiler = ref @@ Tjr_profile.make_string_profiler ~now:(fun () -> 0)
 
