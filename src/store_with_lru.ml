@@ -63,7 +63,9 @@ open Lwt_aux  (* provides various msg queues *)
 
 open Config
 
-let lru_profiler = ref @@ Tjr_profile.make_string_profiler ~now:(fun () -> 0)
+let lru_profiler = 
+  ref Tjr_profile.dummy_profiler
+  |> Global.register ~name:"Store_with_lru profiler"
 
 module Lru' : sig 
   val lru_ops : unit -> (int, int, lwt) mt_ops
@@ -148,7 +150,9 @@ open Alloc
 
 (** {2 Dmap and dmap_thread } *)
 
-let dmap_profiler = ref @@ Tjr_profile.make_string_profiler ~now:(fun () -> 0)
+let dmap_profiler = 
+  ref Tjr_profile.dummy_profiler
+  |> Global.register ~name:"dmap profiler"
 
 module Dmap' : sig
   val dmap_thread :
@@ -353,7 +357,9 @@ end
 
 (* B-tree/btree ops/bt thread ------------------------------------------- *)
 
-let bt_profiler = ref @@ Tjr_profile.make_string_profiler ~now:(fun () -> 0)
+let bt_profiler = 
+  ref Tjr_profile.dummy_profiler
+  |> Global.register ~name:"btree profiler"
 
 module Btree' : sig
   val btree_thread :

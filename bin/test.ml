@@ -1,7 +1,7 @@
 (** Test the KV store with an LRU frontend *)
 
 (* open Tjr_lru_cache.Persist_mode *)
-open Util
+(* open Util *)
 open Tjr_monad.With_lwt
 open Tjr_kv
 open Lwt_aux
@@ -13,9 +13,11 @@ let sleep f = Lwt_unix.sleep f
 
 open Config
 
-let _ = lru_profiler := Tjr_profile.make_string_profiler ~now
-let _ = dmap_profiler := Tjr_profile.make_string_profiler ~now
-let _ = bt_profiler := Tjr_profile.make_string_profiler ~now
+let _ = 
+  Tjr_profile_with_core.initialize ();
+  lru_profiler := Tjr_profile.make_string_profiler ();
+  dmap_profiler := Tjr_profile.make_string_profiler ();
+  bt_profiler := Tjr_profile.make_string_profiler ()
 
 (* test thread ------------------------------------------------------ *)
 
