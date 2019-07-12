@@ -13,12 +13,6 @@ let sleep f = Lwt_unix.sleep f
 
 open Config
 
-let _ = 
-  Tjr_profile_with_core.initialize ();
-  lru_profiler := Tjr_profile.make_string_profiler ();
-  dmap_profiler := Tjr_profile.make_string_profiler ();
-  bt_profiler := Tjr_profile.make_string_profiler ()
-
 (* test thread ------------------------------------------------------ *)
 
 let lru_ops = Lru'.lru_ops ()
@@ -57,13 +51,15 @@ let _ =
           (Queue.length q_lru_dmap.q)
           (Queue.length q_dmap_bt.q)
         ;
-        !lru_profiler.print_summary (); 
-        print_endline "";
-        print_endline "";
-        !dmap_profiler.print_summary (); 
-        print_endline "";
-        print_endline "";
-        !bt_profiler.print_summary (); 
-        return ())
-])
+        if profiling_enabled then (
+          Lru_profiler.print_summary (); 
+          print_endline "";
+          print_endline "";
+          Dmap_profiler.print_summary (); 
+          print_endline "";
+          print_endline "";
+          Bt_profiler.print_summary (); 
+          return ())
+        else return ()
+      )])
 

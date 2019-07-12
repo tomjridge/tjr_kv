@@ -63,9 +63,8 @@ open Lwt_aux  (* provides various msg queues *)
 
 open Config
 
-let lru_profiler = 
-  ref Tjr_profile.dummy_profiler
-  |> Global.register ~name:"Store_with_lru profiler"
+module Lru_profiler = Make_profiler()
+open Lru_profiler
 
 module Lru' : sig 
   val lru_ops : unit -> (int, int, lwt) mt_ops
@@ -93,9 +92,9 @@ lru_state ref
   
   let enqueue msg = 
     return () >>= fun () ->
-    !lru_profiler.mark "l2d:aa";
+    mark "l2d:aa";
     q_lru_dmap_ops.memq_enqueue ~q:q_lru_dmap ~msg >>= fun r -> 
-    !lru_profiler.mark "l2d:ab";
+    mark "l2d:ab";
     return r
 
   let to_lower = enqueue  (* NOTE used in lru_callback_ops below FIXME
@@ -150,9 +149,8 @@ open Alloc
 
 (** {2 Dmap and dmap_thread } *)
 
-let dmap_profiler = 
-  ref Tjr_profile.dummy_profiler
-  |> Global.register ~name:"dmap profiler"
+module Dmap_profiler = Make_profiler()
+open Dmap_profiler
 
 module Dmap' : sig
   val dmap_thread :
@@ -266,25 +264,25 @@ Parameters:
   let bt_find = fun k ->
     event_ops.ev_create () >>= fun ev ->
     let callback = fun v -> event_ops.ev_signal ev v in
-    !dmap_profiler.mark "d2b:aa"; 
+    mark "d2b:aa"; 
     q_dmap_bt_ops.memq_enqueue
       ~q:q_dmap_bt 
       ~msg:Msg_dmap_bt.(Find(k,callback)) >>= fun () ->
-    !dmap_profiler.mark "d2b:ab"; 
+    mark "d2b:ab"; 
     event_ops.ev_wait ev
 
   let bt_handle_detach (detach_info:('k,'v,'ptr)detach_info) =
     (* Printf.printf "bt_handle_detach start\n%!"; *)
     let kv_op_map = Tjr_pcache.Op_aux.default_kvop_map_ops () in
     let kv_ops = detach_info.past_map |> kv_op_map.bindings |> List.map snd in
-    !dmap_profiler.mark "d2b:ca"; 
+    mark "d2b:ca"; 
     q_dmap_bt_ops.memq_enqueue
       ~q:q_dmap_bt
       ~msg:Msg_dmap_bt.(Detach {
           ops=kv_ops;
           new_dmap_root=detach_info.current_ptr}) >>= fun _ ->
     (* Printf.printf "bt_handle_detach end\n%!"; *)
-    !dmap_profiler.mark "d2b:cb"; 
+    mark "d2b:cb"; 
     return ()
 
   let rum_ops = make_rum_ops
@@ -324,9 +322,9 @@ Parameters:
     let rec read_and_dispatch () =
       from_lwt(yield ()) >>= fun () ->
       (* Printf.printf "dmap_thread read_and_dispatch starts\n%!"; *)
-      !dmap_profiler.mark "dmap:l2d.deq1";
+      mark "dmap:l2d.deq1";
       q_lru_dmap_ops.memq_dequeue q_lru_dmap >>= fun msg ->
-      !dmap_profiler.mark "dmap:l2d.deq2";
+      mark "dmap:l2d.deq2";
       (* Printf.printf "dmap_thread dequeued: %s\n%!" (Lru'.msg2string msg); *)
       (* FIXME the following pause seems to require that the btree
          thread makes progress, but of course it cannot since there
@@ -346,7 +344,7 @@ Parameters:
         async (fun () -> callback v) >>= fun () ->
         read_and_dispatch ()
       | Evictees es -> 
-        !dmap_profiler.mark "dmap:loop_evictees";
+        mark "dmap:loop_evictees";
         loop_evictees es >>= fun () ->
         read_and_dispatch ()
     in
@@ -357,9 +355,8 @@ end
 
 (* B-tree/btree ops/bt thread ------------------------------------------- *)
 
-let bt_profiler = 
-  ref Tjr_profile.dummy_profiler
-  |> Global.register ~name:"btree profiler"
+module Bt_profiler = Make_profiler()
+open Bt_profiler
 
 module Btree' : sig
   val btree_thread :
@@ -404,9 +401,9 @@ end = struct
     in
     let rec read_and_dispatch () =
       from_lwt(yield()) >>= fun () ->
-      !bt_profiler.mark "d2b:ea"; 
+      mark "d2b:ea"; 
       q_dmap_bt_ops.memq_dequeue q_dmap_bt >>= fun msg ->
-      !bt_profiler.mark "d2b:eb"; 
+      mark "d2b:eb"; 
       from_lwt(sleep bt_thread_delay) >>= fun () ->  (* FIXME *)
       (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)
       match msg with
