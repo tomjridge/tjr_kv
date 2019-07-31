@@ -22,6 +22,7 @@ RUN opam install re
 # drop the RUN prefix from the following lines (and ignore previous lines!)
 # to build using local opam install
 
+RUN echo .
 
 RUN opam pin -y -n add tjr_lib_core https://github.com/tomjridge/tjr_lib.git
 RUN opam pin -y -n add tjr_lib https://github.com/tomjridge/tjr_lib.git
@@ -33,5 +34,10 @@ RUN opam pin -y -n add tjr_btree https://github.com/tomjridge/tjr_btree.git#dev
 RUN opam pin -y -n add tjr_lru_cache https://github.com/tomjridge/tjr_lru_cache.git
 RUN opam pin -y -n add tjr_mem_queue https://github.com/tomjridge/tjr_mem_queue.git
 RUN opam pin -y -n add tjr_pcache https://github.com/tomjridge/tjr_pcache.git
+RUN opam pin -y -n add tjr_pcache_test https://github.com/tomjridge/tjr_pcache.git
 RUN opam pin -y -n add tjr_kv https://github.com/tomjridge/tjr_kv.git
 
+RUN opam install -y tjr_btree
+RUN opam install -y tjr_lru_cache
+RUN opam install -y tjr_pcache
+RUN opam install -y tjr_kv
