@@ -3,7 +3,4 @@ services:
   - docker
 
 script:
-   - make -C .dockerfile 
-
-after_script:
-  - docker images
+   - docker build .
