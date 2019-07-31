@@ -20,7 +20,7 @@ include Lwt'
 
 
 (** async for lwt *)
-let async : Tjr_monad.With_lwt.lwt Tjr_lru_cache.Mt_intf.async = 
+let async : Tjr_monad.With_lwt.lwt Tjr_lru_cache.Mt_intf.Threading_types.async = 
   fun (f:unit -> (unit,lwt) m) : (unit,lwt) m ->
     Lwt.async (fun () -> f () |> to_lwt); return ()
 

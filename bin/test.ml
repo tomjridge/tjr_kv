@@ -34,7 +34,7 @@ let test_thread () =
     (if n mod 100000 = 0 then Printf.printf "Inserting %d\n%!" n else ());
     (* let mode = if n mod 100 = 0 then Persist_now else Persist_later in *)
     let mode = Persist_later in
-    lru_ops.insert mode n (2*n) >>= fun () ->
+    lru_ops.mt_insert mode n (2*n) >>= fun () ->
     loop (n+1)
   in
   loop 0
@@ -54,9 +54,7 @@ let _ =
         if profiling_enabled then (
           Lru_profiler.print_summary (); 
           print_endline "";
-          print_endline "";
           Dmap_profiler.print_summary (); 
-          print_endline "";
           print_endline "";
           Bt_profiler.print_summary (); 
           return ())

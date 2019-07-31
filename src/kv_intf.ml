@@ -43,7 +43,7 @@ module Msg_lru_dmap = struct
 
   (* FIXME this should probably be moved to fs_shared *)
   type ('k,'v,'t) lru_dmap_msg
-    = ('k,'v,'t) Tjr_lru_cache.Mt_intf.msg
+    = ('k,'v,'t) Tjr_lru_cache.Mt_intf.Msg_type.msg
     =  Insert of 'k*'v*(unit -> (unit,'t)m)
     | Delete of 'k*(unit -> (unit,'t)m)
     | Find of 'k * ('v option -> (unit,'t)m)
@@ -215,7 +215,7 @@ module States(Pre:KVRT) = struct
   module type LRU = sig
     type k_map
     type t_map
-    type nonrec lru_state = (k,v,k_map,t_map,t) Mt_state_type.lru_state
+    type nonrec lru_state = (k,v,k_map,t_map,t) Mt_state_type.mt_state
   end
 
   module With_blk_id(Blk_id:sig type blk_id = r end) = struct

@@ -34,3 +34,10 @@ include Tjr_config.Make(S)
 let { lru_max_size; lru_evict_count; dmap_ops_per_block;
       dmap_blocks_limit; dmap_thread_delay; bt_thread_delay; _ } =
   config
+
+[%%import "kv_optcomp_config.ml"]
+[%%if PROFILING_ENABLED]
+let profiling_enabled = true
+[%%else]
+let profiling_enabled = false
+[%%endif]

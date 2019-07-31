@@ -63,66 +63,74 @@ open Lwt_aux  (* provides various msg queues *)
 
 open Config
 
-module Lru_profiler = Make_profiler()
-open Lru_profiler
+[%%import "kv_optcomp_config.ml"]
+
+[%%if PROFILING_ENABLED]
+module Lru_profiler = Tjr_profile.With_array.Make_profiler(struct let cap = int_of_float 1e7 end)
+module Dmap_profiler = Tjr_profile.With_array.Make_profiler(struct let cap = int_of_float 1e7 end)
+module Bt_profiler = Tjr_profile.With_array.Make_profiler(struct let cap = int_of_float 1e7 end)
+[%%else]
+module Profiler = Tjr_profile.Dummy_int_profiler
+module Dmap_profiler = Profiler
+module Bt_profiler = Profiler
+[%%endif]
+
 
 module Lru' : sig 
   val lru_ops : unit -> (int, int, lwt) mt_ops
 end = struct
-         
+
+  open Lru_profiler
+  let [l2d_aa   ;l2d_ab] = 
+    ["l2d:aa" ;"l2d:ab"] 
+    |> List.map allocate_int 
+  [@@warning "-8"]
+
   let from_lwt = With_lwt.from_lwt
   let to_lwt = With_lwt.to_lwt
          
   let lru_lock = Lwt_aux.create_mutex()
-  let lru_state  : (int,int,_,_,_) lru_state ref = ref (
-      Tjr_lru_cache.Mt_intf.mt_initial_state 
-        ~max_size:lru_max_size
-        ~evict_count:lru_evict_count
-        (* FIXME pervasives.compare *)
-        ~compare_k:(fun (x:int) y -> Pervasives.compare x y)) 
 
-  let _ :
-(int, int, (int, int Tjr_lru_cache.Im_intf.entry, unit) Tjr_map.map,
- (int, (int, With_lwt.lwt) blocked_thread list, unit) Tjr_map.map,
- With_lwt.lwt)
-lru_state ref
-    = lru_state
-  
-  
+  module Internal = Tjr_lru_cache.Make(struct
+      type k = int
+      let compare : int -> int -> int = Int_.compare
+      type v = int
+      type t = lwt
+      let monad_ops = monad_ops
+      let async = async
+      let event_ops = event_ops
+    end)
+
+  type mt_state = Internal.mt_state
+
+  let lru_state : mt_state ref = 
+    Internal.make_multithreaded_lru.initial_state
+      ~max_size:lru_max_size
+      ~evict_count:lru_evict_count
+    |> ref  
   
   let enqueue msg = 
     return () >>= fun () ->
-    mark "l2d:aa";
+    mark l2d_aa;
     q_lru_dmap_ops.memq_enqueue ~q:q_lru_dmap ~msg >>= fun r -> 
-    mark "l2d:ab";
+    mark l2d_ab;
     return r
 
   let to_lower = enqueue  (* NOTE used in lru_callback_ops below FIXME
                              perhaps rename this type *)
 
-  let with_lru_ops (* : ('msg,'k,int,'t)with_lru_ops *) = 
+  let with_lru (* : ('msg,'k,int,'t)with_lru_ops *) = 
     let with_lru f = 
       from_lwt (Lwt_mutex.lock lru_lock) >>= fun () ->
       f ~lru:(!lru_state) ~set_lru:(fun lru ->
           lru_state:=lru; return ()) >>= fun a ->
       (Lwt_mutex.unlock lru_lock; return a)
     in
-    { with_lru }
+    Mt_intf.Mt_state_type.{ with_lru }
 
 
-  let lru_callback_ops () : (int,int,lwt) Mt_callback_ops.mt_callback_ops = 
-    make_lru_callback_ops ~monad_ops ~async ~with_lru_ops  ~to_lower
-
-  let _ = lru_callback_ops
-
-  (* the interface we expose to upper levels; add a dummy arg so that
-     in test code we can set up profilers ie nothing gets executed at
-     this point *)
-  let lru_ops () = 
-    make_lru_ops 
-      ~monad_ops 
-      ~event_ops
-      ~callback_ops:(lru_callback_ops ())
+  (* FIXME no need to shield this *)
+  let lru_ops () = Internal.make_multithreaded_lru.ops ~with_lru ~to_lower
 
   let _ : unit -> (int,int,lwt) mt_ops = lru_ops
 
@@ -149,14 +157,17 @@ open Alloc
 
 (** {2 Dmap and dmap_thread } *)
 
-module Dmap_profiler = Make_profiler()
-open Dmap_profiler
-
 module Dmap' : sig
   val dmap_thread :
     yield:(unit -> unit Lwt.t) ->
     sleep:(float -> unit Lwt.t) -> unit -> ('a, lwt) m
 end = struct
+
+  open Dmap_profiler
+  let [d2b_aa   ;d2b_ab   ;d2b_ca   ;d2b_cb   ;dmap_l2d_deq1   ;dmap_l2d_deq2   ;dmap_es] = 
+      ["d2b:aa" ;"d2b:ab" ;"d2b:ca" ;"d2b:cb" ;"dmap:l2d.deq1" ;"dmap:l2d.deq2" ;"dmap_es"] 
+    |> List.map allocate_int 
+  [@@warning "-8"]
 
   (* open Tjr_pcache *)
   open Dmap_types
@@ -264,25 +275,25 @@ Parameters:
   let bt_find = fun k ->
     event_ops.ev_create () >>= fun ev ->
     let callback = fun v -> event_ops.ev_signal ev v in
-    mark "d2b:aa"; 
+    mark d2b_aa; 
     q_dmap_bt_ops.memq_enqueue
       ~q:q_dmap_bt 
       ~msg:Msg_dmap_bt.(Find(k,callback)) >>= fun () ->
-    mark "d2b:ab"; 
+    mark d2b_ab; 
     event_ops.ev_wait ev
 
   let bt_handle_detach (detach_info:('k,'v,'ptr)detach_info) =
     (* Printf.printf "bt_handle_detach start\n%!"; *)
     let kv_op_map = Tjr_pcache.Op_aux.default_kvop_map_ops () in
     let kv_ops = detach_info.past_map |> kv_op_map.bindings |> List.map snd in
-    mark "d2b:ca"; 
+    mark d2b_ca; 
     q_dmap_bt_ops.memq_enqueue
       ~q:q_dmap_bt
       ~msg:Msg_dmap_bt.(Detach {
           ops=kv_ops;
           new_dmap_root=detach_info.current_ptr}) >>= fun _ ->
     (* Printf.printf "bt_handle_detach end\n%!"; *)
-    mark "d2b:cb"; 
+    mark d2b_cb; 
     return ()
 
   let rum_ops = make_rum_ops
@@ -305,7 +316,7 @@ Parameters:
         | (k,e)::es -> 
           let open Im_intf in
           (* let open Mt_intf in *)
-          match e.entry_type with
+          match e with
           | Insert { value=v; _ } -> 
             dmap_ops.insert k v >>= fun () ->
             loop es
@@ -322,9 +333,9 @@ Parameters:
     let rec read_and_dispatch () =
       from_lwt(yield ()) >>= fun () ->
       (* Printf.printf "dmap_thread read_and_dispatch starts\n%!"; *)
-      mark "dmap:l2d.deq1";
+      mark dmap_l2d_deq1;
       q_lru_dmap_ops.memq_dequeue q_lru_dmap >>= fun msg ->
-      mark "dmap:l2d.deq2";
+      mark dmap_l2d_deq2;
       (* Printf.printf "dmap_thread dequeued: %s\n%!" (Lru'.msg2string msg); *)
       (* FIXME the following pause seems to require that the btree
          thread makes progress, but of course it cannot since there
@@ -344,7 +355,7 @@ Parameters:
         async (fun () -> callback v) >>= fun () ->
         read_and_dispatch ()
       | Evictees es -> 
-        mark "dmap:loop_evictees";
+        mark dmap_es;
         loop_evictees es >>= fun () ->
         read_and_dispatch ()
     in
@@ -355,8 +366,8 @@ end
 
 (* B-tree/btree ops/bt thread ------------------------------------------- *)
 
-module Bt_profiler = Make_profiler()
-open Bt_profiler
+(* module Bt_profiler = Make_profiler() *)
+(* open Bt_profiler *)
 
 module Btree' : sig
   val btree_thread :
@@ -366,6 +377,14 @@ end = struct
   open Btree_ops
   open Dummy_btree_implementation
   open Ins_del_op
+
+
+  open Bt_profiler
+  let [d2b_ea;d2b_eb] = 
+      ["d2b_ea";"d2b_eb"] 
+    |> List.map allocate_int 
+  [@@warning "-8"]
+
 
   let state = ref (empty_btree ())
   let with_state f = 
@@ -401,9 +420,9 @@ end = struct
     in
     let rec read_and_dispatch () =
       from_lwt(yield()) >>= fun () ->
-      mark "d2b:ea"; 
+      mark d2b_ea; 
       q_dmap_bt_ops.memq_dequeue q_dmap_bt >>= fun msg ->
-      mark "d2b:eb"; 
+      mark d2b_eb; 
       from_lwt(sleep bt_thread_delay) >>= fun () ->  (* FIXME *)
       (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)
       match msg with
