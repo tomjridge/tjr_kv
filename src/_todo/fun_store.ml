@@ -1,3 +1,5 @@
+(*
+
 (** Functional store, with a reference for initialization purposes *)
 
 (* test store -------------------------------------------------------- *)
@@ -14,3 +16,4 @@ let mk_ref' v =
   test_store:=t;
   r
 
+*)

@@ -54,7 +54,7 @@ NOTE We refer to the combination of a Dmap and a B-tree as a RUM (for roll-up ma
 (* TODO
 
 - a functional approach would be nicer (rather than maintaining refs); this likely involves using a new monad, a combination of lwt and state passing
-
+- FIXME need to generalize over int,int key,value
 *)
 
 open Tjr_monad.With_lwt
@@ -70,14 +70,28 @@ module Lru_profiler = Tjr_profile.With_array.Make_profiler(struct let cap = int_
 module Dmap_profiler = Tjr_profile.With_array.Make_profiler(struct let cap = int_of_float 1e7 end)
 module Bt_profiler = Tjr_profile.With_array.Make_profiler(struct let cap = int_of_float 1e7 end)
 [%%else]
-module Profiler = Tjr_profile.Dummy_int_profiler
-module Dmap_profiler = Profiler
-module Bt_profiler = Profiler
+module Lru_profiler = Tjr_profile.Dummy_int_profiler
+module Dmap_profiler = Lru_profiler
+module Bt_profiler = Lru_profiler
 [%%endif]
 
 
+module S = struct
+    type k = string
+    let compare: k -> k -> int = Pervasives.compare
+    type v = string
+end
+open S
+
+module Queues = Lwt_aux.Make_queues(S)
+open Queues
+
+(* NOTE queues are mutable *)
+let q_lru_dmap_state = q_lru_dmap.initial_state
+let q_dmap_bt_state = q_dmap_bt.initial_state
+
 module Lru' : sig 
-  val lru_ops : unit -> (int, int, lwt) mt_ops
+  val lru_ops : unit -> (k, v, lwt) mt_ops
 end = struct
 
   open Lru_profiler
@@ -92,9 +106,9 @@ end = struct
   let lru_lock = Lwt_aux.create_mutex()
 
   module Internal = Tjr_lru_cache.Make(struct
-      type k = int
-      let compare : int -> int -> int = Int_.compare
-      type v = int
+      type k = S.k
+      let compare = S.compare
+      type v = S.v
       type t = lwt
       let monad_ops = monad_ops
       let async = async
@@ -112,7 +126,7 @@ end = struct
   let enqueue msg = 
     return () >>= fun () ->
     mark l2d_aa;
-    q_lru_dmap_ops.memq_enqueue ~q:q_lru_dmap ~msg >>= fun r -> 
+    q_lru_dmap.ops.memq_enqueue ~q:q_lru_dmap_state ~msg >>= fun r -> 
     mark l2d_ab;
     return r
 
@@ -132,7 +146,7 @@ end = struct
   (* FIXME no need to shield this *)
   let lru_ops () = Internal.make_multithreaded_lru.ops ~with_lru ~to_lower
 
-  let _ : unit -> (int,int,lwt) mt_ops = lru_ops
+  let _ : unit -> (k,v,lwt) mt_ops = lru_ops
 
   let msg2string = 
     let open Msg_lru_dmap in
@@ -249,7 +263,7 @@ Parameters:
 
       For the time being, we
      would like to use a dummy implementation of dmap_ops *)
-  let dmap_state = 
+  let dmap_state : (k,v,'ptr)Dmap_dummy_implementation.Dummy_state.t ref = 
     Dmap_dummy_implementation.Dummy_state.init_dummy_state ~init_ptr:0 
     |> ref
 
@@ -268,7 +282,7 @@ Parameters:
       ~alloc_ptr:(fun () -> return (fv()))
       ~with_state:{with_state}
       
-  let _ : (int,int,'ptr,'t) dmap_ops = dmap_ops
+  let _ : (k,v,'ptr,'t) dmap_ops = dmap_ops
 
   (** NOTE the following enqueues a find event on the msg queue, and
      constructs a promise that waits for the result *)
@@ -276,8 +290,8 @@ Parameters:
     event_ops.ev_create () >>= fun ev ->
     let callback = fun v -> event_ops.ev_signal ev v in
     mark d2b_aa; 
-    q_dmap_bt_ops.memq_enqueue
-      ~q:q_dmap_bt 
+    q_dmap_bt.ops.memq_enqueue
+      ~q:q_dmap_bt_state
       ~msg:Msg_dmap_bt.(Find(k,callback)) >>= fun () ->
     mark d2b_ab; 
     event_ops.ev_wait ev
@@ -287,8 +301,8 @@ Parameters:
     let kv_op_map = Tjr_pcache.Op_aux.default_kvop_map_ops () in
     let kv_ops = detach_info.past_map |> kv_op_map.bindings |> List.map snd in
     mark d2b_ca; 
-    q_dmap_bt_ops.memq_enqueue
-      ~q:q_dmap_bt
+    q_dmap_bt.ops.memq_enqueue
+      ~q:q_dmap_bt_state
       ~msg:Msg_dmap_bt.(Detach {
           ops=kv_ops;
           new_dmap_root=detach_info.current_ptr}) >>= fun _ ->
@@ -334,7 +348,7 @@ Parameters:
       from_lwt(yield ()) >>= fun () ->
       (* Printf.printf "dmap_thread read_and_dispatch starts\n%!"; *)
       mark dmap_l2d_deq1;
-      q_lru_dmap_ops.memq_dequeue q_lru_dmap >>= fun msg ->
+      q_lru_dmap.ops.memq_dequeue q_lru_dmap_state >>= fun msg ->
       mark dmap_l2d_deq2;
       (* Printf.printf "dmap_thread dequeued: %s\n%!" (Lru'.msg2string msg); *)
       (* FIXME the following pause seems to require that the btree
@@ -392,7 +406,7 @@ end = struct
       ~state:(!state)
       ~set_state:(fun x -> state:=x; return ())
   
-  let btree_ops : (int,int,bt_ptr,lwt) btree_ops = 
+  let btree_ops : (k,v,bt_ptr,lwt) btree_ops = 
     make_dummy_btree_ops ~monad_ops ~with_state:{with_state}
 
 
@@ -421,7 +435,7 @@ end = struct
     let rec read_and_dispatch () =
       from_lwt(yield()) >>= fun () ->
       mark d2b_ea; 
-      q_dmap_bt_ops.memq_dequeue q_dmap_bt >>= fun msg ->
+      q_dmap_bt.ops.memq_dequeue q_dmap_bt_state >>= fun msg ->
       mark d2b_eb; 
       from_lwt(sleep bt_thread_delay) >>= fun () ->  (* FIXME *)
       (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)

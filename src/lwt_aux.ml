@@ -98,36 +98,52 @@ let empty_queue () = {
 }
 
 
-(** {2 q_lru_dmap} *)
-
-module Internal2 = struct  
-  type lru_dmap_msg' = (int,int,lwt) Msg_lru_dmap.lru_dmap_msg
-
-  let q_lru_dmap : 
-    (Lwt_mutex.t,unit Lwt_condition.t, lru_dmap_msg') queue 
-    = 
-    (empty_queue ())
-
-  let q_lru_dmap_ops : lru_dmap_msg' lwt_queue_ops = queue_ops ()
+module type S = sig
+  type k
+  type v
 end
-let q_lru_dmap = Internal2.q_lru_dmap
-let q_lru_dmap_ops = Internal2.q_lru_dmap_ops
 
 
-(** {2 q_dmap_bt } *)
-
-module Internal3 = struct
-  (* open Dmap_bt_msg_type *)
-  type dmap_bt_msg' = (int,int,lwt) Msg_dmap_bt.dmap_bt_msg
-  
-  let q_dmap_bt :
-    (Lwt_mutex.t,unit Lwt_condition.t, dmap_bt_msg') queue 
-    = 
-    (empty_queue ())
-      
-  let q_dmap_bt_ops : dmap_bt_msg' lwt_queue_ops = queue_ops ()
-  
+(** This functor constructs [q_lru_dmap] and [q_dmap_bt], parameterized by k and v *)
+module Make_queues(S:S) : sig
+  (** Just an abbrev *)
+  type 'a queue' = (Lwt_mutex.t, unit Lwt_condition.t, 'a) queue
+  type lru_dmap_msg' = (S.k, S.v, lwt) Msg_type.msg
+  val q_lru_dmap :
+    (lru_dmap_msg' queue', lru_dmap_msg' lwt_queue_ops)
+    initial_state_and_ops
+  type dmap_bt_msg' = (S.k, S.v, lwt) Msg_dmap_bt.dmap_bt_msg
+  val q_dmap_bt :
+    (dmap_bt_msg' queue', dmap_bt_msg' lwt_queue_ops)
+    initial_state_and_ops
 end
-let q_dmap_bt = Internal3.q_dmap_bt
-let q_dmap_bt_ops = Internal3.q_dmap_bt_ops 
+= struct
+  open S
 
+  type 'a queue' = (Lwt_mutex.t, unit Lwt_condition.t, 'a) queue
+
+  (** {2 q_lru_dmap}  *)
+
+  type lru_dmap_msg' = (k,v,lwt) Msg_lru_dmap.lru_dmap_msg
+  module Internal2 = struct  
+    let q_lru_dmap : 
+      (Lwt_mutex.t,unit Lwt_condition.t, lru_dmap_msg') queue 
+      = 
+      (empty_queue ())
+    let q_lru_dmap_ops : lru_dmap_msg' lwt_queue_ops = queue_ops ()
+  end
+  let q_lru_dmap = {initial_state=Internal2.q_lru_dmap;ops=Internal2.q_lru_dmap_ops}
+
+
+  (** {2 q_dmap_bt } *)
+
+  type dmap_bt_msg' = (k,v,lwt) Msg_dmap_bt.dmap_bt_msg
+  module Internal3 = struct
+    let q_dmap_bt :
+      (Lwt_mutex.t,unit Lwt_condition.t, dmap_bt_msg') queue 
+      = 
+      (empty_queue ())
+    let q_dmap_bt_ops : dmap_bt_msg' lwt_queue_ops = queue_ops ()
+  end
+  let q_dmap_bt = {initial_state=Internal3.q_dmap_bt; ops=Internal3.q_dmap_bt_ops}
+end

@@ -17,6 +17,9 @@ open Config
 
 let lru_ops = Lru'.lru_ops ()
 
+let i2k i = string_of_int i
+let i2v i = string_of_int i
+
 let test_thread () = 
   let rec loop n = 
     let maybe_sleep = 
@@ -34,7 +37,7 @@ let test_thread () =
     (if n mod 100000 = 0 then Printf.printf "Inserting %d\n%!" n else ());
     (* let mode = if n mod 100 = 0 then Persist_now else Persist_later in *)
     let mode = Persist_later in
-    lru_ops.mt_insert mode n (2*n) >>= fun () ->
+    lru_ops.mt_insert mode (i2k n) (i2k(2*n)) >>= fun () ->
     loop (n+1)
   in
   loop 0
@@ -48,8 +51,8 @@ let _ =
       Lwt.(
         Lwt_unix.sleep 2.0 >>= fun () ->
         Printf.printf "Queue sizes: lru2dmap:%d; dmap2bt:%d\n%!" 
-          (Queue.length q_lru_dmap.q)
-          (Queue.length q_dmap_bt.q)
+          (Queue.length q_lru_dmap_state.q)
+          (Queue.length q_dmap_bt_state.q)
         ;
         if profiling_enabled then (
           Lru_profiler.print_summary (); 
