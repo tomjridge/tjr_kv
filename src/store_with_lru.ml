@@ -183,86 +183,16 @@ end = struct
     |> List.map allocate_int 
   [@@warning "-8"]
 
-  (* open Tjr_pcache *)
   open Dmap_types
 
-  (** 
 
-Construct the DMAP, which uses the dmap_ops and wraps it in a routine which occasionally executes a B-tree roll-up. We call this a "RUM" (roll-up map).
+  (** Now we fill in the missing components: [dmap_ops,
+     dmap_blocks_limit, bt_find, bt_detach].
 
-Parameters:
+      For the time being, we would like to use a dummy implementation
+     of dmap_ops *)
 
-- [monad_ops]
 
-- [dmap_ops]: dmap from tjr_pcache, with dmap interface
-
-- [dmap_blocks_limit]: how many blocks in the pcache before
-  attempting a roll-up; if the length of pcache is [>=] this limit, we
-  attempt a roll-up; NOTE that this limit should be >= 2 (if we roll
-  up with 1 block, then in fact nothing gets rolled up because we roll
-  up "upto" the current block; not a problem but probably pointless
-  for testing)
-
-- [bt_find]: called if key not in pcache map FIXME do we need a
-  write-through cache here? or just rely on the front-end LRU? FIXME
-  note that even if a rollup is taking place, we can use the old
-  B-tree root for the [bt_find] operation.
-
-- [bt_handle_detach]: called to detach the rollup into another thread;
-  typically this operation puts a msg on a message queue which is then
-  received and acted upon by the dedicated rollup thread
-
-  *)
-  let make_rum_ops
-      ~monad_ops 
-      ~(dmap_ops:('k,'v,'ptr,'t) Dmap_types.dmap_ops)
-      ~dmap_blocks_limit 
-      ~bt_find
-      ~(bt_handle_detach:('k,'v,'ptr) Dmap_types.detach_info -> (unit,'t)m)
-    (* : ('k,'v,'t) Tjr_fs_shared.Map_ops.map_ops  *)
-    =
-    (* let open Mref_plus in *)
-    let ( >>= ) = monad_ops.bind in
-    let return = monad_ops.return in
-    let pc = dmap_ops in  (* persistent cache; another name for dmap *)
-    let find k = 
-      pc.find k >>= fun v ->
-      match v with
-      | None -> bt_find k
-      | Some v -> return (Some v)
-    in
-    let maybe_roll_up () = 
-      pc.block_list_length () >>= fun n ->
-      match n >= dmap_blocks_limit with
-      | false -> return `No_roll_up_needed
-      | true -> 
-        (* Printf.printf "dmap_thread, maybe_roll_up\n%!"; *)
-        pc.detach () >>= fun detach_result ->
-        bt_handle_detach detach_result >>= fun () ->
-        return `Ok
-    in
-    let insert k v =
-      pc.insert k v >>= fun () -> 
-      maybe_roll_up () >>= fun _ ->
-      return ()
-    in
-    let delete k =
-      pc.delete k >>= fun () -> 
-      maybe_roll_up () >>= fun _ ->
-      return ()
-    in
-    let _insert_many k v kvs = 
-      (* FIXME we should do something smarter here *)
-      insert k v >>= fun () -> return kvs
-    in
-    `Run (find, insert, delete) 
-
-  let _ = make_rum_ops
-
-  (** Now we fill in the missing components: [dmap_ops, dmap_blocks_limit, bt_find, bt_detach]. 
-
-      For the time being, we
-     would like to use a dummy implementation of dmap_ops *)
   let dmap_state : (k,v,'ptr)Dmap_dummy_implementation.Dummy_state.t ref = 
     Dmap_dummy_implementation.Dummy_state.init_dummy_state ~init_ptr:0 
     |> ref
@@ -273,16 +203,6 @@ Parameters:
     f 
       ~state:(!dmap_state)
       ~set_state:(fun x -> dmap_state:=x; return ())
-
-  (* FIXME we really want an implementation that uses polymap, so we can convert to a map *)
-  let dmap_ops (* pcache_ops *) : ('op,'map,'ptr,'t)dmap_ops = 
-    Dmap_dummy_implementation.make_dmap_ops
-      ~monad_ops
-      ~ops_per_block:dmap_ops_per_block
-      ~alloc_ptr:(fun () -> return (fv()))
-      ~with_state:{with_state}
-      
-  let _ : (k,v,'ptr,'t) dmap_ops = dmap_ops
 
   (** NOTE the following enqueues a find event on the msg queue, and
      constructs a promise that waits for the result *)
@@ -310,18 +230,25 @@ Parameters:
     mark d2b_cb; 
     return ()
 
-  let rum_ops = make_rum_ops
+  let dmap_ops = 
+    (* FIXME we really want an implementation that uses polymap, so we can convert to a map *)
+    let raw_dmap_ops (* pcache_ops *) : ('op,'map,'ptr,'t)dmap_ops = 
+        Dmap_dummy_implementation.make_dmap_ops
+          ~monad_ops
+          ~ops_per_block:dmap_ops_per_block
+          ~alloc_ptr:(fun () -> return (fv()))
+          ~with_state:{with_state}
+    in
+    let _ : (k,v,'ptr,'t) dmap_ops = raw_dmap_ops in      
+    Dmap_with_blocks_limit.make_ops
     ~monad_ops
-    ~dmap_ops (* pcache_ops *)
+    ~dmap_ops:raw_dmap_ops
     ~dmap_blocks_limit
     ~bt_find
     ~bt_handle_detach
 
-  let _ = rum_ops
-
   let dmap_thread ~yield ~sleep () = 
     let loop_evictees = 
-      (* let open Tjr_lru_cache.Entry in *)
       let rec loop es = 
         from_lwt(yield ()) >>= fun () ->
         (* Printf.printf "dmap_thread, loop_evictees\n%!"; *)
@@ -345,6 +272,8 @@ Parameters:
       loop
     in
     let rec read_and_dispatch () =
+      (* FIXME do we need to yield if we are simply dequeueing? *)
+      (* FIXME why is yield coerced to from_lwt? should be monad-agnostic *)
       from_lwt(yield ()) >>= fun () ->
       (* Printf.printf "dmap_thread read_and_dispatch starts\n%!"; *)
       mark dmap_l2d_deq1;
@@ -378,10 +307,7 @@ Parameters:
 end
 
 
-(* B-tree/btree ops/bt thread ------------------------------------------- *)
-
-(* module Bt_profiler = Make_profiler() *)
-(* open Bt_profiler *)
+(** {2 B-tree/btree ops/bt thread} *)
 
 module Btree' : sig
   val btree_thread :
