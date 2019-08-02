@@ -54,6 +54,7 @@ let _ =
           (Queue.length q_lru_dmap_state.q)
           (Queue.length q_dmap_bt_state.q)
         ;
+        let open Kv_profilers in
         if profiling_enabled then (
           Lru_profiler.print_summary (); 
           print_endline "";

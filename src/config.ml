@@ -9,6 +9,7 @@ module Config_type = struct
     test_thread_delay            :float;
     dmap_thread_delay            :float;
     bt_thread_delay              :float;
+    dmap_filename                :string; (* where to store the dmap *)
   } [@@deriving yojson]
 end
 include Config_type
@@ -24,7 +25,8 @@ module S = struct
       test_thread_delay_iterations =100;
       test_thread_delay            =(1e-6);
       dmap_thread_delay            =(1e-6);
-      bt_thread_delay              =(1e-6)
+      bt_thread_delay              =(1e-6);
+      dmap_filename                ="dmap.store"
     }
   let filename="tjr_kv_config.json"
 end
@@ -32,7 +34,7 @@ end
 include Tjr_config.Make(S)
 
 let { lru_max_size; lru_evict_count; dmap_ops_per_block;
-      dmap_blocks_limit; dmap_thread_delay; bt_thread_delay; _ } =
+      dmap_blocks_limit; dmap_thread_delay; bt_thread_delay; dmap_filename; _ } =
   config
 
 [%%import "kv_optcomp_config.ml"]

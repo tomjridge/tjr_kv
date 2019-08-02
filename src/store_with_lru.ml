@@ -62,19 +62,7 @@ open Kv_intf
 open Lwt_aux  (* provides various msg queues *)
 
 open Config
-
-[%%import "kv_optcomp_config.ml"]
-
-[%%if PROFILING_ENABLED]
-module Lru_profiler = Tjr_profile.With_array.Make_profiler(struct let cap = int_of_float 1e7 end)
-module Dmap_profiler = Tjr_profile.With_array.Make_profiler(struct let cap = int_of_float 1e7 end)
-module Bt_profiler = Tjr_profile.With_array.Make_profiler(struct let cap = int_of_float 1e7 end)
-[%%else]
-module Lru_profiler = Tjr_profile.Dummy_int_profiler
-module Dmap_profiler = Lru_profiler
-module Bt_profiler = Lru_profiler
-[%%endif]
-
+open Kv_profilers
 
 module S = struct
     type k = string
@@ -185,7 +173,6 @@ end = struct
 
   open Dmap_types
 
-
   (** Now we fill in the missing components: [dmap_ops,
      dmap_blocks_limit, bt_find, bt_detach].
 
@@ -196,7 +183,7 @@ end = struct
   let dmap_state : (k,v,'ptr)Dmap_dummy_implementation.Dummy_state.t ref = 
     Dmap_dummy_implementation.Dummy_state.init_dummy_state ~init_ptr:0 
     |> ref
-
+    
   let _ = dmap_state
 
   let with_state f = 
@@ -265,8 +252,9 @@ end = struct
             dmap_ops.delete k >>= fun () ->
             loop es
           | Lower _ -> 
-            (* Printf.printf "WARNING!!! unexpected evictee: Lower\n%!"; *)
-            loop es
+            Printf.printf "WARNING!!! unexpected evictee: Lower\n%!"; 
+            assert(false) (* should never happen FIXME? *)
+            (* loop es *)
             (* FIXME perhaps define a restricted type *)
       in
       loop
