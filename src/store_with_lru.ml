@@ -161,6 +161,7 @@ module Make(S:S) = struct
   end
 
 
+(*
   (** {2 Simple freespace impl using an incrementing int ref} *)
 
   module Alloc = struct
@@ -169,6 +170,7 @@ module Make(S:S) = struct
       fun () -> (x:=!x+1; !x)
   end
   open Alloc
+*)
 
 
   (** {2 Dmap and dmap_thread } *)
@@ -193,19 +195,24 @@ module Make(S:S) = struct
         For the time being, we would like to use a dummy implementation
         of dmap_ops *)
 
-    let fd,fstore,dmap_with_sync = 
-      Tjr_pcache_example.(Dmap_example.(
-          make_dmap_on_file ~compare:S.compare ~config:dmap_config ~ptr0:dmap_ptr0 ~fn:dmap_fn)) 
-      |> fun {initial_state=(fd,fstore);ops} -> 
-      fd,fstore,ops
+    let fd,store,dmap_with_sync = 
+      Tjr_pcache_example.(Dmap_example.(With_lwt.(
+          make_dmap_on_file ~compare:S.compare ~config:dmap_config ~ptr0:dmap_ptr0 ~fn:dmap_fn))) 
+      |> fun {initial_state=(fd,store);ops} -> 
+      fd,store,ops
       
-    let dmap_state = ref fstore
+    let dmap_state : blk_id ref *
+(Bin_prot.Common.buf * int, blk_id)
+Simple_pl_and_pcl_implementations.Pl_impl.pl_state ref *
+Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
+(blk_id, (k, (k, v) Ins_del_op.op, unit) Tjr_map.map) Dcl_types.dcl_state ref
+      = store
     let dmap_ops = dmap_with_sync.dmap_ops
 
-    let with_state f = 
+(*    let with_state f = 
       f 
         ~state:(!dmap_state)
-        ~set_state:(fun x -> dmap_state:=x; return ())
+        ~set_state:(fun x -> dmap_state:=x; return ()) *)
 
     (** NOTE the following enqueues a find event on the msg queue, and
         constructs a promise that waits for the result *)
@@ -219,7 +226,7 @@ module Make(S:S) = struct
       mark d2b_ab; 
       event_ops.ev_wait ev
 
-    let bt_handle_detach (detach_info:('k,'v,'ptr)detach_info) =
+    let bt_handle_detach (detach_info:('k,'v,blk_id)detach_info) =
       (* Printf.printf "bt_handle_detach start\n%!"; *)
       let kv_op_map = Tjr_pcache.Op_aux.default_kvop_map_ops () in
       let kv_ops = detach_info.past_map |> kv_op_map.bindings |> List.map snd in
@@ -232,6 +239,8 @@ module Make(S:S) = struct
       (* Printf.printf "bt_handle_detach end\n%!"; *)
       mark d2b_cb; 
       return ()
+
+    let _ = bt_handle_detach
 
     let dmap_ops = 
       (* FIXME we really want an implementation that uses polymap, so we can convert to a map *)
@@ -375,11 +384,35 @@ module Make(S:S) = struct
           btree_ops.sync () >>= fun ptr ->        
           Printf.printf 
             "New root pair: dmap_root=%d, bt_root=%d\n%!"
-            new_dmap_root
+            (Blk_id.to_int new_dmap_root)
             (ptr |> Ptr.t2int);
           read_and_dispatch ()
       in
       read_and_dispatch ()
+  end
+
+end
+
+
+module Common_instances = struct
+
+  module Int_int = struct
+
+    let config = Tjr_pcache_example.Dmap_example.Config.int_int_config
+
+    module Internal = struct
+      type k = int
+      let compare = Int_.compare
+      type v = int
+      let dmap_config = config
+      let dmap_ptr0 = Blk_id.of_int 0
+      let dmap_fn = "dmap.store"
+    end
+
+    module Internal2 = Make(Internal)
+
+    include Internal2
+    
   end
 
 end

@@ -1,6 +1,8 @@
+(*
 module Blk_id_as_int = struct
   type blk_id = int
 end
+*)
 
 module Btree_ops = struct
   (* FIXME also include "batch" op *)
@@ -27,7 +29,7 @@ module Msg_dmap_bt = struct
   *)
 
   open Ins_del_op  (* FIXME move to fs_shared *)
-  open Blk_id_as_int
+  (* open Blk_id_as_int *)
 
   type ('k,'v,'t) dmap_bt_msg = 
     | Find of 'k * ('v option -> (unit,'t) m)

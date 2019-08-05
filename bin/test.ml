@@ -5,31 +5,35 @@
 open Tjr_monad.With_lwt
 open Tjr_kv
 open Lwt_aux
-open Store_with_lru
+open Store_with_lru.Common_instances.Int_int
+
+let test_config = Tjr_kv.Config.config
 
 let yield () = Lwt.return () (* Lwt_main.yield *)
 
 let sleep f = Lwt_unix.sleep f
 
-open Config
-
 (* test thread ------------------------------------------------------ *)
+
 
 let lru_ops = Lru'.lru_ops ()
 
-let i2k i = string_of_int i
-let i2v i = string_of_int i
+(* let i2k i = string_of_int i *)
+(* let i2v i = string_of_int i *)
+let i2k i = i
+let i2v i = i
+
 
 let test_thread () = 
   let rec loop n = 
     let maybe_sleep = 
-      if n mod config.test_thread_delay_iterations = 0 then
-        from_lwt (sleep config.test_thread_delay)
+      if n mod test_config.test_thread_delay_iterations = 0 then
+        from_lwt (sleep test_config.test_thread_delay)
       else return ()
     in
     (* need this yield so that sleeping thread gets a chance to run ? *)
     let maybe_yield = 
-      if n mod config.test_thread_delay_iterations = 0 then 
+      if n mod test_config.test_thread_delay_iterations = 0 then 
         from_lwt(Lwt_main.yield ()) else return ()
     in
     maybe_sleep >>= fun () -> 
@@ -55,7 +59,7 @@ let _ =
           (Queue.length q_dmap_bt_state.q)
         ;
         let open Kv_profilers in
-        if profiling_enabled then (
+        if Tjr_kv.Config.profiling_enabled then (
           Lru_profiler.print_summary (); 
           print_endline "";
           Dmap_profiler.print_summary (); 
