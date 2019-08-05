@@ -7,7 +7,7 @@ open Tjr_kv
 open Lwt_aux
 open Store_with_lru.Common_instances.Int_int
 
-let test_config = Tjr_kv.Config.config
+let test_config = Tjr_kv.Kv_config.config
 
 let yield () = Lwt.return () (* Lwt_main.yield *)
 
@@ -59,7 +59,7 @@ let _ =
           (Queue.length q_dmap_bt_state.q)
         ;
         let open Kv_profilers in
-        if Tjr_kv.Config.profiling_enabled then (
+        if Tjr_kv.Kv_config.profiling_enabled then (
           Lru_profiler.print_summary (); 
           print_endline "";
           Dmap_profiler.print_summary (); 

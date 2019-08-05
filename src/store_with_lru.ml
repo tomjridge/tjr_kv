@@ -61,7 +61,7 @@ open Tjr_monad.With_lwt
 open Kv_intf
 open Lwt_aux  (* provides various msg queues *)
 
-open Config
+open Kv_config
 open Kv_profilers
 
 module type S = sig
@@ -289,7 +289,7 @@ Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
         (* FIXME the following pause seems to require that the btree
            thread makes progress, but of course it cannot since there
            are no msgs on the queue *)
-        from_lwt(sleep dmap_thread_delay) >>= fun () ->  (* FIXME *)
+        (* from_lwt(sleep dmap_thread_delay) >>= fun () ->  (\* FIXME *\) *)
         match msg with
         | Insert (k,v,callback) ->
           dmap_ops.insert k v >>= fun () -> 
@@ -348,7 +348,7 @@ Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
         then runs against the B-tree, and records the new root pair. *)
     let btree_thread ~yield ~sleep () = 
       let rec loop (ops:('k,'v)op list) = 
-        from_lwt(yield()) >>= fun () ->
+        (* from_lwt(yield()) >>= fun () -> *)  (* FIXME may want to yield occasionally *)
         match ops with
         | [] -> return ()
         | op::ops -> 
@@ -365,11 +365,11 @@ Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
             loop ops
       in
       let rec read_and_dispatch () =
-        from_lwt(yield()) >>= fun () ->
+        (* from_lwt(yield()) >>= fun () -> *)
         mark d2b_ea; 
         q_dmap_bt.ops.memq_dequeue q_dmap_bt_state >>= fun msg ->
         mark d2b_eb; 
-        from_lwt(sleep bt_thread_delay) >>= fun () ->  (* FIXME *)
+        (* from_lwt(sleep bt_thread_delay) >>= fun () ->  (\* FIXME *\) *)
         (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)
         match msg with
         | Find(k,callback) ->
