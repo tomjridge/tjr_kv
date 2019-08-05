@@ -10,11 +10,11 @@ module Btree_ops = struct
   (** The operations supported by the B-tree. Even though the B-tree is
       synchronous, the "sync" operation is used to reveal the current
       root block. *)
-  type ('k,'v,'blkid,'t) btree_ops = {
+  type ('k,'v,'blk_id,'t) btree_ops = {
     find: 'k -> ('v option,'t)m;
     insert: 'k -> 'v -> (unit,'t)m;
     delete: 'k -> (unit,'t)m;
-    sync: unit -> ('blkid,'t)m;  
+    sync: unit -> ('blk_id,'t)m;  
   }
 
 end
@@ -31,11 +31,11 @@ module Msg_dmap_bt = struct
   open Ins_del_op  (* FIXME move to fs_shared *)
   (* open Blk_id_as_int *)
 
-  type ('k,'v,'t) dmap_bt_msg = 
+  type ('k,'v,'blk_id,'t) dmap_bt_msg = 
     | Find of 'k * ('v option -> (unit,'t) m)
     | Detach of {
         ops: ('k,'v) op list;
-        new_dmap_root: blk_id
+        new_dmap_root: 'blk_id
       }
 end
 
@@ -179,7 +179,7 @@ module Ctxt(Pre:KVRT) = struct
 
     module type DMAP_BTREE = sig
       (* FIXME this msg type also depends on blk_id *)
-      type msg2 = (k,v,t) Msg_dmap_bt.dmap_bt_msg
+      type msg2 = (k,v,blk_id,t) Msg_dmap_bt.dmap_bt_msg
       type q2 = (mutex,cvar,msg2) queue
       val q_dmag_bt_ops : (msg2,q2,t) memq_ops
     end

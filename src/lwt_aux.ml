@@ -101,6 +101,7 @@ let empty_queue () = {
 module type S = sig
   type k
   type v
+  type blk_id
 end
 
 
@@ -112,7 +113,7 @@ module Make_queues(S:S) : sig
   val q_lru_dmap :
     (lru_dmap_msg' queue', lru_dmap_msg' lwt_queue_ops)
     initial_state_and_ops
-  type dmap_bt_msg' = (S.k, S.v, lwt) Msg_dmap_bt.dmap_bt_msg
+  type dmap_bt_msg' = (S.k, S.v, S.blk_id, lwt) Msg_dmap_bt.dmap_bt_msg
   val q_dmap_bt :
     (dmap_bt_msg' queue', dmap_bt_msg' lwt_queue_ops)
     initial_state_and_ops
@@ -137,7 +138,7 @@ end
 
   (** {2 q_dmap_bt } *)
 
-  type dmap_bt_msg' = (k,v,lwt) Msg_dmap_bt.dmap_bt_msg
+  type dmap_bt_msg' = (k,v,S.blk_id,lwt) Msg_dmap_bt.dmap_bt_msg
   module Internal3 = struct
     let q_dmap_bt :
       (Lwt_mutex.t,unit Lwt_condition.t, dmap_bt_msg') queue 

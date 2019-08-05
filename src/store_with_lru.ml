@@ -63,6 +63,8 @@ open Lwt_aux  (* provides various msg queues *)
 
 open Kv_config
 open Kv_profilers
+module Blk_id = Blk_id_as_int
+open Blk_id
 
 module type S = sig
   type k
@@ -85,7 +87,7 @@ open S
 module Make(S:S) = struct
   open S
 
-  module Queues = Lwt_aux.Make_queues(S)
+  module Queues = Lwt_aux.Make_queues(struct include S type blk_id = Blk_id.blk_id end)
   open Queues
 
   (* NOTE queues are mutable *)
