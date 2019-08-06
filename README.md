@@ -16,12 +16,12 @@ The LRU should provide (but doesn't currently!) an interface similar to:
 
 There are various components, message queues, etc. These are shown above and have names like: Lru, Dmap, Btree, Rootman. The following gives some idea of how these are arranged and how the types work out:
 
+![2019-08-06.120506](README.assets/2019-08-06.120506.png)
 
-![](README.assets/thread_and_message_types-2019-07-02.153644.png)
 
 The internal state of each component is partly documented by the following:
 
-![2019-07-02.160130](README.assets/state_types-2019-07-02.160130.png)
+![2019-08-06.120758](README.assets/2019-08-06.120758.png)
 
 ## Quick links
 
