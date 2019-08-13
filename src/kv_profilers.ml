@@ -6,9 +6,9 @@ module Internal : sig
   val bt_profiler : int profiler
 end = struct
   [%%if PROFILING_ENABLED]
-  let lru_profiler = make_profiler()
-  let dmap_profiler = make_profiler()
-  let bt_profiler = make_profiler()
+  let lru_profiler = make_profiler ~print_header:"lru profiler" ()
+  let dmap_profiler = make_profiler ~print_header:"dmap profiler" ()
+  let bt_profiler = make_profiler ~print_header:"bt profiler" ()
   [%%else]
   let d = dummy_profiler
   let lru_profiler = d
