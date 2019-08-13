@@ -98,11 +98,12 @@ module Make(S:S) = struct
     val lru_ops : unit -> (k, v, lwt) mt_ops
   end = struct
 
-    open Lru_profiler
     let [l2d_aa   ;l2d_ab] = 
       ["l2d:aa" ;"l2d:ab"] 
-      |> List.map allocate_int 
+      |> List.map intern 
     [@@warning "-8"]
+    let mark = lru_profiler.mark
+
 
     let from_lwt = With_lwt.from_lwt
     let to_lwt = With_lwt.to_lwt
@@ -183,11 +184,11 @@ module Make(S:S) = struct
       sleep:(float -> unit Lwt.t) -> unit -> ('a, lwt) m
   end = struct
 
-    open Dmap_profiler
     let [d2b_aa   ;d2b_ab   ;d2b_ca   ;d2b_cb   ;dmap_l2d_deq1   ;dmap_l2d_deq2   ;dmap_es] = 
       ["d2b:aa" ;"d2b:ab" ;"d2b:ca" ;"d2b:cb" ;"dmap:l2d.deq1" ;"dmap:l2d.deq2" ;"dmap_es"] 
-      |> List.map allocate_int 
+      |> List.map intern
     [@@warning "-8"]
+    let mark = dmap_profiler.mark
 
     open Dmap_types
 
@@ -327,11 +328,11 @@ Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
     open Ins_del_op
 
 
-    open Bt_profiler
     let [d2b_ea;d2b_eb] = 
       ["d2b_ea";"d2b_eb"] 
-      |> List.map allocate_int 
+      |> List.map intern
     [@@warning "-8"]
+    let mark = bt_profiler.mark
 
 
     let state = ref (empty_btree ())

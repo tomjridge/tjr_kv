@@ -8,7 +8,7 @@ open Kv_intf
 
 module Lwt' = struct
 
-  let monad_ops = lwt_ops
+  let monad_ops = lwt_monad_ops
 
   let ( >>= ) = monad_ops.bind
   let return = monad_ops.return

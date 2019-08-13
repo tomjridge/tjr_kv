@@ -1,7 +1,5 @@
 (** Test the KV store with an LRU frontend *)
 
-(* open Tjr_lru_cache.Persist_mode *)
-(* open Util *)
 open Tjr_monad.With_lwt
 open Tjr_kv
 open Lwt_aux
@@ -13,9 +11,6 @@ let yield () = Lwt.return () (* Lwt_main.yield *)
 
 let sleep f = Lwt_unix.sleep f
 
-(* test thread ------------------------------------------------------ *)
-
-
 let lru_ops = Lru'.lru_ops ()
 
 (* let i2k i = string_of_int i *)
@@ -23,7 +18,7 @@ let lru_ops = Lru'.lru_ops ()
 let i2k i = i
 let i2v i = i
 
-
+(** Test thread runs a loop, inserting (i,2*i) at step i *)
 let test_thread () = 
   let rec loop n = 
     let maybe_sleep = 
@@ -46,7 +41,7 @@ let test_thread () =
   in
   loop 0
 
-
+(** Start dmap, bt and test thread; wait 2s; then print some stats *)
 let _ =
   Lwt_main.run (Lwt.choose [
       to_lwt (Dmap'.dmap_thread ~yield ~sleep ());
@@ -56,16 +51,7 @@ let _ =
         Lwt_unix.sleep 2.0 >>= fun () ->
         Printf.printf "Queue sizes: lru2dmap:%d; dmap2bt:%d\n%!" 
           (Queue.length q_lru_dmap_state.q)
-          (Queue.length q_dmap_bt_state.q)
-        ;
-        let open Kv_profilers in
-        if Tjr_kv.Kv_config.profiling_enabled then (
-          Lru_profiler.print_summary (); 
-          print_endline "";
-          Dmap_profiler.print_summary (); 
-          print_endline "";
-          Bt_profiler.print_summary (); 
-          return ())
-        else return ()
+          (Queue.length q_dmap_bt_state.q);
+        return ()
       )])
 

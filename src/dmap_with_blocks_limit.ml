@@ -1,7 +1,7 @@
 (** This is a dmap (detachable map) which automatically detaches after
    a certain number of blocks *)
 
-type ('k,'v,'t) dmap_with_lim_ops = ('k,'v,'t) Tjr_fs_shared.Map_ops.map_ops
+type ('k,'v,'t) dmap_with_lim_ops = ('k,'v,'t) Tjr_fs_shared.Shared_map_ops.map_ops
 
 (** NOTE bt_find and bt_handle_detach are named for the particular
    application we envisage: a persistent cache which hands over to a
@@ -74,6 +74,6 @@ let make_ops
     (* FIXME we should do something smarter here *)
     insert k v >>= fun () -> return kvs
   in
-  Tjr_fs_shared.Map_ops.{find;insert;delete;insert_many}
+  Tjr_fs_shared.Shared_map_ops.{find;insert;delete;insert_many}
 
 let _ = make_ops
