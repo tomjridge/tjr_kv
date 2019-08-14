@@ -8,6 +8,22 @@ B-tree. The pcache and the B-tree are synchronous: updates are written
 directly to disk.
 
 
+
+
+
+## Demo
+
+
+
+This is a demo of a version of the system with a B-tree placeholder. The demo runs for 2s. At the end, 800k writes have occurred at the LRU interface. 500k of these have been processed via the persistent cache and made it to the B-tree.
+
+
+
+<a href="https://imgur.com/fHyug2t"><img src="https://i.imgur.com/fHyug2t.gif" title="source: imgur.com" /></a>
+
+## Architecture
+
+
 ![](https://docs.google.com/drawings/d/e/2PACX-1vQc8669_M4bqjDZNCC9KoUYSx7ZNOWbGMtUOiZJFfgoLGc3jFZeamg6_BydB_ZzhZ4CViHV1q-t0QZh/pub?w=960&amp;h=720)
 
 The LRU should provide (but doesn't currently!) an interface similar to:

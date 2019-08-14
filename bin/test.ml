@@ -40,18 +40,42 @@ let test_thread () =
     loop (n+1)
   in
   loop 0
-
+    
 (** Start dmap, bt and test thread; wait 2s; then print some stats *)
 let _ =
-  Lwt_main.run (Lwt.choose [
-      to_lwt (Dmap'.dmap_thread ~yield ~sleep ());
-      to_lwt (Btree'.btree_thread ~yield ~sleep ());
-      to_lwt (test_thread());
-      Lwt.(
-        Lwt_unix.sleep 2.0 >>= fun () ->
-        Printf.printf "Queue sizes: lru2dmap:%d; dmap2bt:%d\n%!" 
-          (Queue.length q_lru_dmap_state.q)
-          (Queue.length q_dmap_bt_state.q);
-        return ()
-      )])
+  let module A = struct
+    open Tjr_btree_examples 
+    let example = Examples.Lwt.int_int_example () 
+    let Examples.{monad_ops;blk_ops;empty_leaf_as_blk; blk_allocator_ref; btree_root_ref; _} = example 
+    let ( >>= ) = monad_ops.bind
+    let return = monad_ops.return 
+    let Blk_layer.{ from_file; close } =
+      Blk_layer.make_from_file_and_close ~monad_ops ~blk_ops
+        ~empty_leaf_as_blk 
 
+    (* let _ = blk_allocator_ref := {min_free_blk_id=Blk_id_as_int.of_int 2} *)
+    (* let _ = btree_root_ref := {btree_root=Blk_id_as_int.of_int 1} *)
+
+  end
+  in
+  let module B = struct
+    open Lwt    
+    let _ = 
+      Lwt_main.run (
+        to_lwt (A.from_file ~fn:test_config.bt_filename ~create:true ~init:true) 
+        >>= fun (fd,ba_root,bt_root) -> 
+        let fd = Lwt_unix.of_unix_file_descr fd in
+        Lwt.choose [
+          to_lwt (Dmap'.dmap_thread ~yield ~sleep ());
+          to_lwt (Btree'.btree_thread ~fd ~yield ~sleep ());
+          to_lwt (test_thread());
+          Lwt.(
+            Lwt_unix.sleep 2.0 >>= fun () ->
+            Printf.printf "Queue sizes: lru2dmap:%d; dmap2bt:%d\n%!" 
+              (Queue.length q_lru_dmap_state.q)
+              (Queue.length q_dmap_bt_state.q);
+            return ()
+          )])
+  end
+  in
+  ()

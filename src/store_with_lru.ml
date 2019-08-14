@@ -66,6 +66,8 @@ open Kv_profilers
 module Blk_id = Blk_id_as_int
 open Blk_id
 
+
+
 module type S = sig
   type k
   val compare: k -> k -> int
@@ -73,6 +75,13 @@ module type S = sig
   val dmap_config: (k,v,blk_id) Tjr_pcache_example.Dmap_example.Config.config
   val dmap_ptr0: blk_id
   val dmap_fn: string
+
+  type node 
+  type leaf
+  type leaf_stream
+  val bt_example: 
+    (k, v, blk_id, lwt, blk_id, string,
+     Lwt_unix.file_descr, node, leaf, leaf_stream, unit) Tjr_btree_examples.Examples.example
 end
 
 (*
@@ -320,10 +329,11 @@ Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
 
   module Btree' : sig
     val btree_thread :
+      fd:Lwt_unix.file_descr -> 
       yield:(unit -> unit Lwt.t) ->
       sleep:(float -> unit Lwt.t) -> unit -> ('a, lwt) m
   end = struct
-    open Btree_ops
+    (* open Btree_ops *)
     open Dummy_btree_implementation
     open Ins_del_op
 
@@ -335,63 +345,73 @@ Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
     let mark = bt_profiler.mark
 
 
+(*
     let state = ref (empty_btree ())
     let with_state f = 
       f 
         ~state:(!state)
         ~set_state:(fun x -> state:=x; return ())
 
-    let btree_ops : (k,v,bt_ptr,lwt) btree_ops = 
+    let btree_ops : (k,v,bt_ptr,lwt) btree_ops =
       make_dummy_btree_ops ~monad_ops ~with_state:{with_state}
-
+*)
 
     open Msg_dmap_bt
 
     (** The thread listens at the end of the q_dmap_btree for msgs which it
         then runs against the B-tree, and records the new root pair. *)
-    let btree_thread ~yield ~sleep () = 
-      let rec loop (ops:('k,'v)op list) = 
-        (* from_lwt(yield()) >>= fun () -> *)  (* FIXME may want to yield occasionally *)
-        match ops with
-        | [] -> return ()
-        | op::ops -> 
-          (* FIXME more efficient if we dealt with multiple ops eg insert_many *)
-          (* NOTE the following do not have callbacks, because they come
-             from a flush from the pcache (even if the LRU user
-             requested sync... the sync write is to the pcache) *)
-          match op with
-          | Insert(k,v) -> 
-            btree_ops.insert k v >>= fun () ->
-            loop ops
-          | Delete k -> 
-            btree_ops.delete k >>= fun () ->
-            loop ops
+    let btree_thread ~fd ~yield ~sleep () = 
+      let module A = struct
+        let btree_ops = bt_example.map_ops_with_ls fd
+
+        let bt_sync () = return ((failwith "FIXME"):Ptr.t)
+
+        let Map_ops_with_ls.{ find; insert; delete; _ } = btree_ops
+
+        let rec loop (ops:('k,'v)op list) = 
+          (* from_lwt(yield()) >>= fun () -> *)  (* FIXME may want to yield occasionally *)
+          match ops with
+          | [] -> return ()
+          | op::ops -> 
+            (* FIXME more efficient if we dealt with multiple ops eg insert_many *)
+            (* NOTE the following do not have callbacks, because they come
+               from a flush from the pcache (even if the LRU user
+               requested sync... the sync write is to the pcache) *)
+            match op with
+            | Insert(k,v) -> 
+              btree_ops.insert ~k ~v >>= fun () ->
+              loop ops
+            | Delete k -> 
+              btree_ops.delete ~k >>= fun () ->
+              loop ops
+
+        let rec read_and_dispatch () =
+          (* from_lwt(yield()) >>= fun () -> *)
+          mark d2b_ea; 
+          q_dmap_bt.ops.memq_dequeue q_dmap_bt_state >>= fun msg ->
+          mark d2b_eb; 
+          (* from_lwt(sleep bt_thread_delay) >>= fun () ->  (\* FIXME *\) *)
+          (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)
+          match msg with
+          | Find(k,callback) ->
+            find ~k >>= fun v ->
+            async(fun () -> callback v) >>= fun () ->
+            read_and_dispatch ()
+          | Detach { ops; new_dmap_root } ->
+            loop ops >>= fun () ->
+            (* FIXME what to do with the new root? maybe nothing for the
+               time being? *)
+            (* FIXME what about root pair? *)
+            bt_sync () >>= fun ptr ->        
+            Printf.printf 
+              "New root pair: dmap_root=%d, bt_root=%d\n%!"
+              (Blk_id.to_int new_dmap_root)
+              (ptr |> Ptr.t2int);
+            read_and_dispatch ()
+      end
       in
-      let rec read_and_dispatch () =
-        (* from_lwt(yield()) >>= fun () -> *)
-        mark d2b_ea; 
-        q_dmap_bt.ops.memq_dequeue q_dmap_bt_state >>= fun msg ->
-        mark d2b_eb; 
-        (* from_lwt(sleep bt_thread_delay) >>= fun () ->  (\* FIXME *\) *)
-        (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)
-        match msg with
-        | Find(k,callback) ->
-          btree_ops.find k >>= fun v ->
-          async(fun () -> callback v) >>= fun () ->
-          read_and_dispatch ()
-        | Detach { ops; new_dmap_root } ->
-          loop ops >>= fun () ->
-          (* FIXME what to do with the new root? maybe nothing for the
-             time being? *)
-          (* FIXME what about root pair? *)
-          btree_ops.sync () >>= fun ptr ->        
-          Printf.printf 
-            "New root pair: dmap_root=%d, bt_root=%d\n%!"
-            (Blk_id.to_int new_dmap_root)
-            (ptr |> Ptr.t2int);
-          read_and_dispatch ()
-      in
-      read_and_dispatch ()
+      A.read_and_dispatch ()
+      
   end
 
 end
@@ -410,6 +430,14 @@ module Common_instances = struct
       let dmap_config = config
       let dmap_ptr0 = Blk_id.of_int 0
       let dmap_fn = "dmap.store"
+
+      let int_int_example = Tjr_btree_examples.Examples.Lwt.int_int_example ()
+      let _ = int_int_example
+
+      type node =  Tjr_btree_examples.Examples.Lwt.Int_int.Btree.node
+      type leaf = Tjr_btree_examples.Examples.Lwt.Int_int.Btree.leaf
+      type leaf_stream = Tjr_btree_examples.Examples.Lwt.Int_int.Btree.leaf_stream
+      let bt_example = int_int_example      
     end
 
     module Internal2 = Make(Internal)
