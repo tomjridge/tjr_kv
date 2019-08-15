@@ -1,4 +1,4 @@
-(** Lwt support: Lwt combined with Tjr_store; includes queue types and ops *)
+(** Lwt support *)
 
 open Tjr_monad.With_lwt
 open Tjr_mem_queue.Memq_intf
@@ -6,7 +6,7 @@ open Kv_intf
 
 (* FIXME this isn't quite correct - we want lwt combined with state-passing of the fun_store *)
 
-module Lwt' = struct
+include struct
 
   let monad_ops = lwt_monad_ops
 
@@ -16,7 +16,7 @@ module Lwt' = struct
   let event_ops = lwt_event_ops
 
 end
-include Lwt'
+
 
 
 (** async for lwt *)
@@ -25,9 +25,10 @@ let async : Tjr_monad.With_lwt.lwt Tjr_lru_cache.Mt_intf.Threading_types.async =
     Lwt.async (fun () -> f () |> to_lwt); return ()
 
 
-(** {2 lwt mutex basic funs} *)
+(** {2 Lwt mutex basic funs} *)
 
-(** We want the msg queue type to be a {! Tjr_store} ref. *)
+
+(* FIXME move elsewhere - tjr_monad? *)
 
 (* private; basic support from lwt. NOTE lock and wait are in Lwt.t *)
 module Internal : sig
@@ -48,7 +49,7 @@ end
 include Internal
 
 
-(** {2 lwt mutex ops, msg queue_ops} *)
+(** {2 Lwt mutex ops, msg queue_ops} *)
 
 module Lwt_mutex_ops = struct
   (* FIXME move mutex and cvar ops from mem_queue to tjr_monad; give
@@ -77,26 +78,27 @@ include Lwt_mutex_ops
 
 (** {2 In-memory message queue for Lwt} *)
 
-(** We construct the empty msg queue, and the [q_lru_dcl] reference to
-   an empty message queue *)
-
+(** Type for lwt_queue_ops *)
 module Lwt_queue = struct
   type 'msg lwt_queue_ops = ('msg, (Lwt_mutex.t, unit Lwt_condition.t, 'msg) queue, lwt) memq_ops
 end
 open Lwt_queue
 
+(** Construct queue ops *)
 let queue_ops () = make_memq_ops ~monad_ops ~mutex_ops
 
 let _ : unit -> ('a, (Lwt_mutex.t, unit Lwt_condition.t, 'a) queue, lwt) memq_ops = queue_ops
 
 
 (* FIXME maybe avoid the unit arg *)
+(** Construct empty queue *)
 let empty_queue () = {
   q = Queue.create();
   mutex=create_mutex();
   cvar=create_cvar()
 }
 
+(** {2 Construct queues given k,v,blk_id} *)
 
 module type S = sig
   type k

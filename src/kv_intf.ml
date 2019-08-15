@@ -131,3 +131,13 @@ module Msg_btree_rootman = struct
   }
 
 end
+
+
+module Root_man_ops = struct
+
+  type ('a,'t) root_man = {
+    read_roots: unit -> ('a,'t)m;
+    write_roots: ?sync:bool -> 'a -> (unit,'t)m;
+  }
+
+end

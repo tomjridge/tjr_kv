@@ -1,9 +1,15 @@
-{ 
-  "lru_max_size":256,
-  "lru_evict_count":128,
-  "dmap_ops_per_block":50,
-  "dmap_blocks_limit":10,
-  "test_thread_delay":0.000001,
-  "dmap_thread_delay":0.001,
-  "bt_thread_delay":0.01
+{
+  "test_thread_yield_iterations" : 50,
+  "test_thread_delay_iterations" : 100,
+  "test_thread_delay"            : 1e-06,
+  "lru_max_size"                 : 256,
+  "lru_evict_count"              : 128,
+  "dmap_filename"                : "dmap.store",
+  "dmap_ops_per_block"           : 200,
+  "dmap_blocks_limit"            : 10,
+  "dmap_thread_delay"            : 1e-06,
+  "bt_filename"                  : "btree.store",
+  "bt_thread_delay"              : 1e-06,
+  "root_man_filename"            : "root_man.store"
 }
+

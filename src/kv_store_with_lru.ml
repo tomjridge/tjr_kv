@@ -1,8 +1,8 @@
-(** A KV store with the LRU frontend. *)
+(** A KV store with an LRU cache frontend. *)
 
 (** We construct the following.
 
-Functional store thread  
+Functional store thread:
   - this maintains the "global" state, including locks etc
   - the queues are kept separate since they are implemented using
     mutation anyway FIXME perhaps prefer a "functional" version using
@@ -13,38 +13,27 @@ Functional store thread
 
 
 
-LRU
+LRU:
   - q_lru_dcl (msg queue from lru to dcl)
   - Lru (and lru_state)
-  - Lru_t, which takes messages from lru.to_lower to enqueue on
+  - Lru thread, which takes messages from lru.to_lower to enqueue on
     q_lru_dcl
 
 
 
 
-Dmap
+Dmap:
   - q_dmap_bt (msg queue from dmap to btree)
   - Dmap and dmap_state
-  - Dmap thread (Dmap_t)
-    - takes msgs from q_dmap_btree and executes against dmap and
-      B-tree
+  - Dmap thread, which takes msgs from q_dmap_btree and executes against dmap; also performs detach occasionally and enqueue messages to q_dmap_bt
 
 
-B-tree
+B-tree:
   - B-tree
-  - B-tree thread (Btree_t) listening to q_dmap_btree
-    - also includes root pair functionality
+  - B-tree thread (Btree_t) listening to q_dmap_btree; also includes root pair functionality
 
-
-
-NOTE We refer to the combination of a Dmap and a B-tree as a RUM (for roll-up map).
 
 {%html:
-<img src='https://docs.google.com/drawings/d/e/2PACX-1vQc8669_M4bqjDZNCC9KoUYSx7ZNOWbGMtUOiZJFfgoLGc3jFZeamg6_BydB_ZzhZ4CViHV1q-t0QZh/pub?w=960&amp;h=720'></img>
-
-<img src='https://github.com/tomjridge/tjr_kv/raw/master/README.assets/thread_and_message_types-2019-07-02.153644.png'></img>
-
-<img src='https://github.com/tomjridge/tjr_kv/raw/master/README.assets/state_types-2019-07-02.160130.png'/>
 
 %}
 
@@ -67,6 +56,17 @@ module Blk_id = Blk_id_as_int
 open Blk_id
 
 
+module Root_data = struct
+
+  type dmap_data = {
+    
+  }
+
+  type root_data = {
+    
+  }
+
+
 
 module type S = sig
   type k
@@ -79,9 +79,9 @@ module type S = sig
   type node 
   type leaf
   type leaf_stream
-  val bt_example: 
+(*  val bt_example: 
     (k, v, blk_id, lwt, blk_id, string,
-     Lwt_unix.file_descr, node, leaf, leaf_stream, unit) Tjr_btree_examples.Examples.example
+     Lwt_unix.file_descr, node, leaf, leaf_stream, unit) Tjr_btree_examples.Examples.example *)
 end
 
 (*
@@ -96,12 +96,19 @@ open S
 module Make(S:S) = struct
   open S
 
+
+  (** {2 Message queues} *)
+
   module Queues = Lwt_aux.Make_queues(struct include S type blk_id = Blk_id.blk_id end)
   open Queues
 
   (* NOTE queues are mutable *)
   let q_lru_dmap_state = q_lru_dmap.initial_state
   let q_dmap_bt_state = q_dmap_bt.initial_state
+
+
+
+  (** {2 LRU cache} *)
 
   module Lru' : sig 
     val lru_ops : unit -> (k, v, lwt) mt_ops
@@ -171,6 +178,7 @@ module Make(S:S) = struct
       | Evictees es -> Printf.sprintf "Evictees(len=%d)" (List.length es)
 
   end
+  let lru_ops = Lru'.lru_ops
 
 
 (*
@@ -323,18 +331,18 @@ Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
       read_and_dispatch ()
 
   end
-
+  let dmap_thread = Dmap'.dmap_thread
 
   (** {2 B-tree/btree ops/bt thread} *)
 
   module Btree' : sig
     val btree_thread :
-      fd:Lwt_unix.file_descr -> 
+      btree_ops:(k, v, blk_id, leaf_stream, lwt) map_ops_with_ls ->
       yield:(unit -> unit Lwt.t) ->
       sleep:(float -> unit Lwt.t) -> unit -> ('a, lwt) m
   end = struct
     (* open Btree_ops *)
-    open Dummy_btree_implementation
+    (* open Dummy_btree_implementation *)
     open Ins_del_op
 
 
@@ -360,11 +368,11 @@ Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
 
     (** The thread listens at the end of the q_dmap_btree for msgs which it
         then runs against the B-tree, and records the new root pair. *)
-    let btree_thread ~fd ~yield ~sleep () = 
+    let btree_thread ~btree_ops ~yield ~sleep () = 
       let module A = struct
-        let btree_ops = bt_example.map_ops_with_ls fd
 
-        let bt_sync () = return ((failwith "FIXME"):Ptr.t)
+        let bt_sync () = return (Blk_id_as_int.of_int (-1)) (* FIXME *)
+          (* return ((failwith "FIXME"):Blk_id_as_int.blk_id) *)
 
         let Map_ops_with_ls.{ find; insert; delete; _ } = btree_ops
 
@@ -406,13 +414,14 @@ Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
             Printf.printf 
               "New root pair: dmap_root=%d, bt_root=%d\n%!"
               (Blk_id.to_int new_dmap_root)
-              (ptr |> Ptr.t2int);
+              (ptr |> Blk_id_as_int.to_int);
             read_and_dispatch ()
       end
       in
       A.read_and_dispatch ()
       
   end
+  let btree_thread = Btree'.btree_thread
 
 end
 
@@ -431,13 +440,13 @@ module Common_instances = struct
       let dmap_ptr0 = Blk_id.of_int 0
       let dmap_fn = "dmap.store"
 
-      let int_int_example = Tjr_btree_examples.Examples.Lwt.int_int_example ()
-      let _ = int_int_example
+      (* let int_int_example = Tjr_btree_examples.Examples.Lwt.int_int_example () *)
+      (* let _ = int_int_example *)
 
       type node =  Tjr_btree_examples.Examples.Lwt.Int_int.Btree.node
       type leaf = Tjr_btree_examples.Examples.Lwt.Int_int.Btree.leaf
       type leaf_stream = Tjr_btree_examples.Examples.Lwt.Int_int.Btree.leaf_stream
-      let bt_example = int_int_example      
+      (* let bt_example = int_int_example       *)
     end
 
     module Internal2 = Make(Internal)

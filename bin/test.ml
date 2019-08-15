@@ -3,7 +3,7 @@
 open Tjr_monad.With_lwt
 open Tjr_kv
 open Lwt_aux
-open Store_with_lru.Common_instances.Int_int
+open Kv_store_with_lru.Common_instances.Int_int
 
 let test_config = Tjr_kv.Kv_config.config
 
@@ -28,7 +28,7 @@ let test_thread () =
     in
     (* need this yield so that sleeping thread gets a chance to run ? *)
     let maybe_yield = 
-      if n mod test_config.test_thread_delay_iterations = 0 then 
+      if n mod test_config.test_thread_yield_iterations = 0 then 
         from_lwt(Lwt_main.yield ()) else return ()
     in
     maybe_sleep >>= fun () -> 
@@ -65,15 +65,23 @@ let _ =
         to_lwt (A.from_file ~fn:test_config.bt_filename ~create:true ~init:true) 
         >>= fun (fd,ba_root,bt_root) -> 
         let fd = Lwt_unix.of_unix_file_descr fd in
+        let example = Tjr_btree_examples.Examples.Lwt.int_int_example () in
+        example.blk_allocator_ref := ba_root;
+        example.btree_root_ref := bt_root;
+        let btree_ops = example.map_ops_with_ls fd in
         Lwt.choose [
           to_lwt (Dmap'.dmap_thread ~yield ~sleep ());
-          to_lwt (Btree'.btree_thread ~fd ~yield ~sleep ());
+          to_lwt (Btree'.btree_thread ~btree_ops ~yield ~sleep ());
           to_lwt (test_thread());
           Lwt.(
             Lwt_unix.sleep 2.0 >>= fun () ->
             Printf.printf "Queue sizes: lru2dmap:%d; dmap2bt:%d\n%!" 
               (Queue.length q_lru_dmap_state.q)
               (Queue.length q_dmap_bt_state.q);
+            let btree_root = (!(example.btree_root_ref)).btree_root |> Blk_id_as_int.to_int in
+            Printf.printf "B-tree root: %d\n" btree_root;
+            let ba_root = (!(example.blk_allocator_ref)).min_free_blk_id |> Blk_id_as_int.to_int in
+            Printf.printf "Blk allocator state (min_free_blk_id): %d\n" ba_root;
             return ()
           )])
   end
