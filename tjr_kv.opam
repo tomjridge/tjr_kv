@@ -15,10 +15,11 @@ dev-repo     : "git+https://github.com/tomjridge/tjr_kv.git"
 
 depends: [
   "tjr_btree"
+  "tjr_btree_examples"
   "tjr_lru_cache"
   "tjr_mem_queue"
   "tjr_pcache" 
-  "tjr_pcache_example" # ?
+  "tjr_pcache_example"
   "tjr_pcache_test" # ?
 ]
 
