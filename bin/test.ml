@@ -25,16 +25,12 @@ module Pcache = struct
   let blk_ops = layers.blk_ops
 
   let _
-    : 
-      (int, int, Blk_id.blk_id, lwt, string,
-       Tjr_pcache_example.Dmap_example.Pl_impl.pl_data, 'a,
-       Tjr_pcache_example.Dmap_example.Pl_impl.pl_internal_state,
-       Tjr_pcache_example.Dmap_example.pcl_internal_state,
-       (int, int, Blk_id.blk_id) Tjr_pcache_example.Dmap_example.Pcl_elt.elt,
-       Lwt_unix.file_descr, (int, int) kvop)
-        Tjr_pcache_example.Pcache_example_intf.pcache_layers
-    = layers
-
+    : pl_data:Tjr_pcache_example.Dmap_example.Pl_impl.pl_data ->
+pl_internal_state:Tjr_pcache_example.Dmap_example.Pl_impl.pl_internal_state ->
+pcl_internal_state:Tjr_pcache_example.Dmap_example.pcl_internal_state ->
+pcl_elt:(int, int, Blk_id.blk_id) Tjr_pcache_example.Dmap_example.Pcl_elt.elt ->
+fd:Lwt_unix.file_descr -> e:(int, int) kvop -> unit
+    = layers.internal
 
   let min_free_blk = ref 1
 
@@ -75,9 +71,9 @@ module Pcache = struct
   let with_dcl = with_ref dcl
 
   let dmap = ref I.(
-      initial_dmap_state ~dcl_state:!dcl
-)
+      initial_dmap_state ~dcl_state:!dcl)
       
+  let with_dmap = with_ref dmap
 
   let fd = Tjr_file.fd_from_file 
       ~fn:test_config.dmap_filename 
@@ -90,17 +86,17 @@ module Pcache = struct
   
   let write_node = 
     let write_node = layers.write_node ~blk_dev_ops in
-    fun pl_internal_state -> write_node ~pl_state:pl_internal_state (* FIXME *)
+    fun pl_internal_state -> 
+      write_node ~pl_state:pl_internal_state (* FIXME *)
 
-  (* make sure these are initialized *)
-  let _ = 
-    layers.alloc:=Some alloc;
-    layers.with_pl:=Some with_pl;
-    layers.with_pcl:=Some with_pcl;
-    layers.with_dmap:=Some with_dcl
-    
+  let pcache_with = Tjr_pcache_example.Pcache_example_intf.{
+    alloc;
+    with_pl;
+    with_pcl;
+    with_dmap
+  }
 
-  let dmap_ops = layers.dmap_ops ~write_node
+  let dmap_ops = layers.dmap_ops ~pcache_with ~write_node
 end
 let dmap_ops = Pcache.dmap_ops
 
