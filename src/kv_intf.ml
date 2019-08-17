@@ -34,7 +34,7 @@ module Msg_dmap_bt = struct
   type ('k,'v,'blk_id,'t) dmap_bt_msg = 
     | Find of 'k * ('v option -> (unit,'t) m)
     | Detach of {
-        ops: ('k,'v) op list;
+        ops: ('k,'v) kvop list;
         new_dmap_root: 'blk_id
       }
 end

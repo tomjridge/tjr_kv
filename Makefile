@@ -6,6 +6,7 @@ default: all
 -include Makefile.ocaml
 
 build::
+	$(DUNE) build --only-packages tjr_kv @install
 	$(DUNE) build bin/tjr_kv_test.exe bin/test.exe
 
 run_tests:

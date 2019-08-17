@@ -33,17 +33,6 @@ B-tree:
   - B-tree thread (Btree_t) listening to q_dmap_btree; also includes root pair functionality
 
 
-{%html:
-
-%}
-
-
-*)
-
-(* TODO
-
-- a functional approach would be nicer (rather than maintaining refs); this likely involves using a new monad, a combination of lwt and state passing
-- FIXME need to generalize over int,int key,value
 *)
 
 open Tjr_monad.With_lwt
@@ -53,45 +42,17 @@ open Lwt_aux  (* provides various msg queues *)
 open Kv_config
 open Kv_profilers
 module Blk_id = Blk_id_as_int
-open Blk_id
-
-
-module Root_data = struct
-
-  type dmap_data = {
-    
-  }
-
-  type root_data = {
-    
-  }
-
+type blk_id = Blk_id.blk_id
 
 
 module type S = sig
   type k
   val compare: k -> k -> int
   type v
-  val dmap_config: (k,v,blk_id) Tjr_pcache_example.Dmap_example.Config.config
-  val dmap_ptr0: blk_id
-  val dmap_fn: string
 
-  type node 
-  type leaf
   type leaf_stream
-(*  val bt_example: 
-    (k, v, blk_id, lwt, blk_id, string,
-     Lwt_unix.file_descr, node, leaf, leaf_stream, unit) Tjr_btree_examples.Examples.example *)
 end
 
-(*
-module S = struct
-    type k = string
-    let compare: k -> k -> int = Pervasives.compare
-    type v = string
-end
-open S
-*)
 
 module Make(S:S) = struct
   open S
@@ -181,24 +142,13 @@ module Make(S:S) = struct
   let lru_ops = Lru'.lru_ops
 
 
-(*
-  (** {2 Simple freespace impl using an incrementing int ref} *)
-
-  module Alloc = struct
-    let fv =
-      let x = ref 0 in
-      fun () -> (x:=!x+1; !x)
-  end
-  open Alloc
-*)
-
-
   (** {2 Dmap and dmap_thread } *)
 
   module Dmap' : sig
     val dmap_thread :
-      yield:(unit -> unit Lwt.t) ->
-      sleep:(float -> unit Lwt.t) -> unit -> ('a, lwt) m
+      dmap_ops :(k,v,blk_id,lwt) Dmap_types.dmap_ops ->
+      yield    :(unit -> unit Lwt.t) ->
+      sleep    :(float -> unit Lwt.t) -> unit -> ('a, lwt) m
   end = struct
 
     let [d2b_aa   ;d2b_ab   ;d2b_ca   ;d2b_cb   ;dmap_l2d_deq1   ;dmap_l2d_deq2   ;dmap_es] = 
@@ -209,32 +159,9 @@ module Make(S:S) = struct
 
     open Dmap_types
 
-    (** Now we fill in the missing components: [dmap_ops,
-        dmap_blocks_limit, bt_find, bt_detach].
+    (** Now we fill in the missing components: [bt_find, bt_handle_detach].*)
 
-        For the time being, we would like to use a dummy implementation
-        of dmap_ops *)
-
-    let fd,store,dmap_with_sync = 
-      Tjr_pcache_example.(Dmap_example.(With_lwt.(
-          make_dmap_on_file ~compare:S.compare ~config:dmap_config ~ptr0:dmap_ptr0 ~fn:dmap_fn))) 
-      |> fun {initial_state=(fd,store);ops} -> 
-      fd,store,ops
-      
-    let dmap_state : blk_id ref *
-(Bin_prot.Common.buf * int, blk_id)
-Simple_pl_and_pcl_implementations.Pl_impl.pl_state ref *
-Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
-(blk_id, (k, (k, v) Ins_del_op.op, unit) Tjr_map.map) Dcl_types.dcl_state ref
-      = store
-    let dmap_ops = dmap_with_sync.dmap_ops
-
-(*    let with_state f = 
-      f 
-        ~state:(!dmap_state)
-        ~set_state:(fun x -> dmap_state:=x; return ()) *)
-
-    (** NOTE the following enqueues a find event on the msg queue, and
+    (** NOTE this enqueues a find event on the msg queue, and
         constructs a promise that waits for the result *)
     let bt_find = fun k ->
       event_ops.ev_create () >>= fun ev ->
@@ -248,7 +175,7 @@ Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
 
     let bt_handle_detach (detach_info:('k,'v,blk_id)detach_info) =
       (* Printf.printf "bt_handle_detach start\n%!"; *)
-      let kv_op_map = Tjr_pcache.Op_aux.default_kvop_map_ops () in
+      let kv_op_map = Kv_op.default_kvop_map_ops () in
       let kv_ops = detach_info.past_map |> kv_op_map.bindings |> List.map snd in
       mark d2b_ca; 
       q_dmap_bt.ops.memq_enqueue
@@ -256,23 +183,22 @@ Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
         ~msg:Msg_dmap_bt.(Detach {
             ops=kv_ops;
             new_dmap_root=detach_info.current_ptr}) >>= fun _ ->
-      (* Printf.printf "bt_handle_detach end\n%!"; *)
       mark d2b_cb; 
       return ()
 
     let _ = bt_handle_detach
 
-    let dmap_ops = 
-      (* FIXME we really want an implementation that uses polymap, so we can convert to a map *)
-      let raw_dmap_ops = dmap_ops in
-      Dmap_with_blocks_limit.make_ops
-        ~monad_ops
-        ~dmap_ops:raw_dmap_ops
-        ~dmap_blocks_limit
-        ~bt_find
-        ~bt_handle_detach
 
-    let dmap_thread ~yield ~sleep () = 
+    let dmap_thread ~dmap_ops ~yield ~sleep () = 
+      let dmap_ops = 
+        let raw_dmap_ops = dmap_ops in
+        Dmap_with_blocks_limit.make_ops
+          ~monad_ops
+          ~dmap_ops:raw_dmap_ops
+          ~dmap_blocks_limit
+          ~bt_find
+          ~bt_handle_detach
+      in
       let loop_evictees = 
         let rec loop es = 
           from_lwt(yield ()) >>= fun () ->
@@ -352,18 +278,6 @@ Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
     [@@warning "-8"]
     let mark = bt_profiler.mark
 
-
-(*
-    let state = ref (empty_btree ())
-    let with_state f = 
-      f 
-        ~state:(!state)
-        ~set_state:(fun x -> state:=x; return ())
-
-    let btree_ops : (k,v,bt_ptr,lwt) btree_ops =
-      make_dummy_btree_ops ~monad_ops ~with_state:{with_state}
-*)
-
     open Msg_dmap_bt
 
     (** The thread listens at the end of the q_dmap_btree for msgs which it
@@ -376,7 +290,7 @@ Tjr_pcache_example.Dmap_example.Pcl_internal_state.pcl_internal_state ref *
 
         let Map_ops_with_ls.{ find; insert; delete; _ } = btree_ops
 
-        let rec loop (ops:('k,'v)op list) = 
+        let rec loop (ops:('k,'v)kvop list) = 
           (* from_lwt(yield()) >>= fun () -> *)  (* FIXME may want to yield occasionally *)
           match ops with
           | [] -> return ()
@@ -430,23 +344,14 @@ module Common_instances = struct
 
   module Int_int = struct
 
-    let config = Tjr_pcache_example.Dmap_example.Config.int_int_config
-
+    type leaf_stream = Tjr_btree_examples.Examples.Lwt.Int_int.Btree.leaf_stream
+    
     module Internal = struct
       type k = int
       let compare = Int_.compare
       type v = int
-      let dmap_config = config
-      let dmap_ptr0 = Blk_id.of_int 0
-      let dmap_fn = "dmap.store"
-
-      (* let int_int_example = Tjr_btree_examples.Examples.Lwt.int_int_example () *)
-      (* let _ = int_int_example *)
-
-      type node =  Tjr_btree_examples.Examples.Lwt.Int_int.Btree.node
-      type leaf = Tjr_btree_examples.Examples.Lwt.Int_int.Btree.leaf
-      type leaf_stream = Tjr_btree_examples.Examples.Lwt.Int_int.Btree.leaf_stream
-      (* let bt_example = int_int_example       *)
+        
+      type nonrec leaf_stream = leaf_stream
     end
 
     module Internal2 = Make(Internal)
