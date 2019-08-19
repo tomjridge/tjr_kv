@@ -36,7 +36,7 @@ B-tree:
 *)
 
 open Tjr_monad.With_lwt
-open Kv_intf
+open Kv_intf 
 open Lwt_aux  (* provides various msg queues *)
 
 open Kv_config
@@ -189,6 +189,10 @@ module Make(S:S) = struct
     let _ = bt_handle_detach
 
 
+    let dmap_op_count = ref 0
+    let _ = Pervasives.at_exit (fun () ->
+        Printf.printf "%s, pcache op count: %d\n" __MODULE__ (!dmap_op_count))
+
     let dmap_thread ~dmap_ops ~yield ~sleep () = 
       let dmap_ops = 
         let raw_dmap_ops = dmap_ops in
@@ -238,18 +242,22 @@ module Make(S:S) = struct
         (* from_lwt(sleep dmap_thread_delay) >>= fun () ->  (\* FIXME *\) *)
         match msg with
         | Insert (k,v,callback) ->
+          incr dmap_op_count;
           dmap_ops.insert k v >>= fun () -> 
           async (fun () -> callback ()) >>= fun () ->
           read_and_dispatch ()
         | Delete (k,callback) ->
+          incr dmap_op_count;
           dmap_ops.delete k >>= fun () ->
           async (fun () -> callback ()) >>= fun () ->
           read_and_dispatch ()
         | Find (k,callback) -> 
+          incr dmap_op_count;
           dmap_ops.find k >>= fun v ->
           async (fun () -> callback v) >>= fun () ->
           read_and_dispatch ()
         | Evictees es -> 
+          dmap_op_count:=!dmap_op_count + List.length es;
           mark dmap_es;
           loop_evictees es >>= fun () ->
           read_and_dispatch ()
@@ -280,6 +288,10 @@ module Make(S:S) = struct
 
     open Msg_dmap_bt
 
+    let btree_op_count = ref 0
+    let _ = Pervasives.at_exit (fun () ->
+        Printf.printf "%s, B-tree op count: %d\n" __MODULE__ (!btree_op_count))
+
     (** The thread listens at the end of the q_dmap_btree for msgs which it
         then runs against the B-tree, and records the new root pair. *)
     let btree_thread ~btree_ops ~yield ~sleep () = 
@@ -295,6 +307,7 @@ module Make(S:S) = struct
           match ops with
           | [] -> return ()
           | op::ops -> 
+            incr btree_op_count;
             (* FIXME more efficient if we dealt with multiple ops eg insert_many *)
             (* NOTE the following do not have callbacks, because they come
                from a flush from the pcache (even if the LRU user

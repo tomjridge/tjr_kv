@@ -107,20 +107,24 @@ let i2k i = i
 let i2v i = i
 
 (** Test thread runs a loop, inserting (i,2*i) at step i *)
-let test_thread () = 
-  let rec loop n = 
-    let maybe_sleep = 
-      if n mod test_config.test_thread_delay_iterations = 0 then
-        from_lwt (sleep test_config.test_thread_delay)
-      else return ()
-    in
-    (* need this yield so that sleeping thread gets a chance to run ? *)
-    let maybe_yield = 
-      if n mod test_config.test_thread_yield_iterations = 0 then 
-        from_lwt(Lwt_main.yield ()) else return ()
-    in
-    maybe_sleep >>= fun () -> 
-    maybe_yield >>= fun () -> 
+let test_thread ~(q:'a Queue.t) () = 
+  let _maybe_sleep n = 
+    if n mod test_config.test_thread_delay_iterations = 0 then
+      from_lwt (sleep test_config.test_thread_delay)
+    else return ()
+  in
+  (* need this yield so that sleeping thread gets a chance to run ? *)
+  let maybe_yield n = 
+    if n mod test_config.test_thread_yield_iterations = 0 then 
+      from_lwt(Lwt_main.yield ()) else return ()
+  in
+  let rec loop n =
+    maybe_yield n >>= fun () -> 
+    (let q_len = Queue.length q in
+     let cond = n mod 1000 = 0 && q_len > 500 in
+     match cond with
+     | true -> from_lwt (sleep (test_config.test_thread_delay *. float_of_int (q_len - 500)))
+     | false -> return ()) >>= fun () -> 
     (if n mod 100000 = 0 then Printf.printf "Inserting %d\n%!" n else ());
     (* let mode = if n mod 100 = 0 then Persist_now else Persist_later in *)
     let mode = Persist_later in
@@ -128,7 +132,7 @@ let test_thread () =
     loop (n+1)
   in
   loop 0
-    
+
 (** Start dmap, bt and test thread; wait 2s; then print some stats *)
 let _ =
   let module A = struct
@@ -160,7 +164,7 @@ let _ =
         Lwt.choose [
           to_lwt (Dmap'.dmap_thread ~dmap_ops ~yield ~sleep ());
           to_lwt (Btree'.btree_thread ~btree_ops ~yield ~sleep ());
-          to_lwt (test_thread());
+          to_lwt (test_thread ~q:q_lru_dmap_state.q ());
           Lwt.(
             Lwt_unix.sleep 2.0 >>= fun () ->
             Printf.printf "Queue sizes: lru2dmap:%d; dmap2bt:%d\n%!" 
