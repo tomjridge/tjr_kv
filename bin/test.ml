@@ -160,7 +160,7 @@ let _ =
         let example = Tjr_btree_examples.Examples.Lwt.int_int_example () in
         example.blk_allocator_ref := ba_root;
         example.btree_root_ref := bt_root;
-        let btree_ops = example.map_ops_with_ls fd in
+        let btree_ops = example.map_ops_with_ls ~note_cached:() fd in
         Lwt.choose [
           to_lwt (Dmap'.dmap_thread ~dmap_ops ~yield ~sleep ());
           to_lwt (Btree'.btree_thread ~btree_ops ~yield ~sleep ());
