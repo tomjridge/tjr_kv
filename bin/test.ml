@@ -141,8 +141,8 @@ let _ =
     let Examples.{monad_ops;blk_ops;empty_leaf_as_blk; blk_allocator_ref; btree_root_ref; _} = example 
     let ( >>= ) = monad_ops.bind
     let return = monad_ops.return 
-    let Blk_layer.{ from_file; close } =
-      Blk_layer.make_from_file_and_close ~monad_ops ~blk_ops
+    let { from_file; close } =
+      Blk_layer_2.make_from_file_and_close ~monad_ops ~blk_ops
         ~empty_leaf_as_blk 
 
     (* let _ = blk_allocator_ref := {min_free_blk_id=Blk_id_as_int.of_int 2} *)

@@ -22,8 +22,6 @@ RUN opam install re
 # drop the RUN prefix from the following lines (and ignore previous lines!)
 # to build using local opam install
 
-RUN echo build from here
-
 RUN opam pin -y -n add tjr_lib_core https://github.com/tomjridge/tjr_lib.git
 RUN opam pin -y -n add tjr_lib https://github.com/tomjridge/tjr_lib.git
 RUN opam pin -y -n add tjr_profile https://github.com/tomjridge/tjr_profile.git
