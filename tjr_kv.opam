@@ -20,7 +20,6 @@ depends: [
   "tjr_mem_queue"
   "tjr_pcache" 
   "tjr_pcache_example"
-  "tjr_pcache_test" # ?
 ]
 
 # ----------------------------------------------------------------------

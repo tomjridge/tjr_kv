@@ -35,7 +35,7 @@ RUN opam pin -y -n add tjr_lru_cache https://github.com/tomjridge/tjr_lru_cache.
 RUN opam pin -y -n add tjr_mem_queue https://github.com/tomjridge/tjr_mem_queue.git
 RUN opam pin -y -n add tjr_pcache https://github.com/tomjridge/tjr_pcache.git
 RUN opam pin -y -n add tjr_pcache_example https://github.com/tomjridge/tjr_pcache.git
-RUN opam pin -y -n add tjr_pcache_test https://github.com/tomjridge/tjr_pcache.git
+#RUN opam pin -y -n add tjr_pcache_test https://github.com/tomjridge/tjr_pcache.git
 RUN opam pin -y -n add tjr_kv https://github.com/tomjridge/tjr_kv.git
 
 RUN opam install -y tjr_btree

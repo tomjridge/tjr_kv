@@ -58,6 +58,9 @@ module Make(S:S) = struct
   open S
 
 
+  type kvop_map_carrier
+  type kvop_map = (k,(k,v)kvop,kvop_map_carrier) Tjr_map.map
+
   (** {2 Message queues} *)
 
   module Queues = Lwt_aux.Make_queues(struct include S type blk_id = Blk_id.blk_id end)
@@ -146,7 +149,7 @@ module Make(S:S) = struct
 
   module Dmap' : sig
     val dmap_thread :
-      dmap_ops :(k,v,blk_id,lwt) Dmap_types.dmap_ops ->
+      dmap_ops :(k,v,blk_id,kvop_map,lwt) dmap_ops ->
       yield    :(unit -> unit Lwt.t) ->
       sleep    :(float -> unit Lwt.t) -> unit -> ('a, lwt) m
   end = struct
@@ -157,7 +160,7 @@ module Make(S:S) = struct
     [@@warning "-8"]
     let mark = dmap_profiler.mark
 
-    open Dmap_types
+    (* open Dmap_types *)
 
     (** Now we fill in the missing components: [bt_find, bt_handle_detach].*)
 
@@ -173,7 +176,7 @@ module Make(S:S) = struct
       mark d2b_ab; 
       event_ops.ev_wait ev
 
-    let bt_handle_detach (detach_info:('k,'v,blk_id)detach_info) =
+    let bt_handle_detach (detach_info:('k,'v,blk_id,'kvop_map)detach_info) =
       (* Printf.printf "bt_handle_detach start\n%!"; *)
       let kv_op_map = Kv_op.default_kvop_map_ops () in
       let kv_ops = detach_info.past_map |> kv_op_map.bindings |> List.map snd in
@@ -277,7 +280,7 @@ module Make(S:S) = struct
   end = struct
     (* open Btree_ops *)
     (* open Dummy_btree_implementation *)
-    open Ins_del_op
+    open Kvop
 
 
     let [d2b_ea;d2b_eb] = 

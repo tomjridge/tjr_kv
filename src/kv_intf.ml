@@ -28,7 +28,7 @@ module Msg_dmap_bt = struct
 
   *)
 
-  open Ins_del_op  (* FIXME move to fs_shared *)
+  open Kvop
   (* open Blk_id_as_int *)
 
   type ('k,'v,'blk_id,'t) dmap_bt_msg = 

@@ -17,88 +17,22 @@ let lru_ops = Lru'.lru_ops ()
 
 
 
-module Pcache = struct
-  module Pc = Tjr_pcache_example.Common_instances.With_lwt
+module Pcache_ = struct
 
-  let layers = Pc.make_int_int_layers ()
+  let file_ops = lwt_file_ops
 
-  let blk_ops = layers.blk_ops
+  let fn = test_config.dmap_filename 
 
-  let _
-    : pl_data:Tjr_pcache_example.Dmap_example.Pl_impl.pl_data ->
-pl_internal_state:Tjr_pcache_example.Dmap_example.Pl_impl.pl_internal_state ->
-pcl_internal_state:Tjr_pcache_example.Dmap_example.pcl_internal_state ->
-pcl_elt:(int, int, Blk_id.blk_id) Tjr_pcache_example.Dmap_example.Pcl_elt.elt ->
-fd:Lwt_unix.file_descr -> e:(int, int) kvop -> unit
-    = layers.internal
-
-  let min_free_blk = ref 1
-
-  let alloc () =     
-    let r = Blk_id.of_int !min_free_blk in
-    incr min_free_blk;
-    return r
-
-  let blk_sz = 4096
-
-  module I = Tjr_pcache_example.Dmap_example.Initial_states
-
-  let with_ref ~ref f = 
-    f ~state:!ref ~set_state:(fun s -> ref:=s;return ())
-
-  let _ = with_ref
-
-  let with_ref ref = {with_state=(fun f -> with_ref ~ref f)}
-
-  let pl = ref I.(
-      let data = (create_buf blk_sz,0) in
-      initial_pl_state ~data ~current:(Blk_id.of_int 0) ~next:None)
-      
-  let with_pl = with_ref pl
-
-  (* FIXME buf size should match blk_sz *)
-  let pcl = ref I.(
-      (* FIXME offset not int *)
-      initial_pcl_state ~buf:(create_buf blk_sz) ~int:0)
-
-  let with_pcl = with_ref pcl
-
-  let dcl = ref I.(
-      let r = Blk_id.of_int 0 in
-      initial_dcl_state ~start_block:r ~current_block:r ~block_list_length:1
-        ~past:[] ~current:[])
-
-  let with_dcl = with_ref dcl
-
-  let dmap = ref I.(
-      initial_dmap_state ~dcl_state:!dcl)
-      
-  let with_dmap = with_ref dmap
-
-  let fd = Tjr_file.fd_from_file 
-      ~fn:test_config.dmap_filename 
-      ~create:true 
-      ~init:true 
-
-  let fd = Lwt_unix.of_unix_file_descr fd
-
-  let blk_dev_ops = Blk_dev_on_fd.make_with_lwt ~blk_ops ~fd
-  
-  let write_node = 
-    let write_node = layers.write_node ~blk_dev_ops in
-    fun pl_internal_state -> 
-      write_node ~pl_state:pl_internal_state (* FIXME *)
-
-  let pcache_with = Tjr_pcache_example.Pcache_example_intf.{
-    alloc;
-    with_pl;
-    with_pcl;
-    with_dmap
-  }
-
-  let dmap_ops = layers.dmap_ops ~pcache_with ~write_node
+  let dmap_ops = 
+    file_ops.fd_from_file ~fn ~create:true ~init:true >>= fun fd ->
+    let write_to_disk s = file_ops.write_blk fd (Blk_id.to_int s.current_ptr) (Bigstring.to_bytes s.buf) in
+    let dmap_ops = Tjr_pcache_example.(
+        make (Make2 { write_to_disk } ) 
+        |> dest_Res2 
+        |> fun x -> x.dmap_ops) 
+    in
+    return dmap_ops    
 end
-let dmap_ops = Pcache.dmap_ops
 
 
 (* let i2k i = string_of_int i *)
@@ -154,6 +88,7 @@ let _ =
     open Lwt    
     let _ = 
       Lwt_main.run (
+        to_lwt Pcache_.dmap_ops >>= fun dmap_ops ->
         to_lwt (A.from_file ~fn:test_config.bt_filename ~create:true ~init:true) 
         >>= fun (fd,ba_root,bt_root) -> 
         let fd = Lwt_unix.of_unix_file_descr fd in

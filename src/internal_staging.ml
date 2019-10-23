@@ -1,3 +1,4 @@
+(*
 (** INTERNAL PLEASE IGNORE This is another attempt to isolate the
    various stages of type construction. *)
 
@@ -217,3 +218,4 @@ end
 
 
 
+*)

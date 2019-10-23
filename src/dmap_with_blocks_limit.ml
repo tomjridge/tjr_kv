@@ -35,10 +35,10 @@ Parameters:
   *)
 let make_ops
       ~monad_ops 
-      ~(dmap_ops:('k,'v,'ptr,'t) Dmap_types.dmap_ops)
+      ~(dmap_ops:('k,'v,'ptr,'kvop_map,'t) dmap_ops)
       ~dmap_blocks_limit 
       ~bt_find
-      ~(bt_handle_detach:('k,'v,'ptr) Dmap_types.detach_info -> (unit,'t)m)
+      ~(bt_handle_detach:('k,'v,'ptr,'kvop_map) detach_info -> (unit,'t)m)
   =
   (* let open Mref_plus in *)
   let ( >>= ) = monad_ops.bind in
