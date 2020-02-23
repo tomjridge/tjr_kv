@@ -17,7 +17,7 @@ let make_root_man ~monad_ops ~(blk_ops:'blk blk_ops) ~(blk_dev_ops:('blk_id,'blk
   in
   let write_roots ?(sync=true) a =
     Marshal.to_string a [] |> fun blk_as_string -> 
-    assert_(fun () -> String.length blk_as_string <= (blk_ops.blk_sz|>Blk_sz.to_int));
+    Test.assert_(fun () -> assert(String.length blk_as_string <= (blk_ops.blk_sz|>Blk_sz.to_int)));
     blk_as_string |> blk_ops.of_string |> fun blk -> 
     write ~blk_id:blk_0 ~blk >>= fun () ->
     sync_blk blk_0

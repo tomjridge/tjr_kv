@@ -178,7 +178,7 @@ module Make(S:S) = struct
 
     let bt_handle_detach (detach_info:('k,'v,blk_id,'kvop_map)detach_info) =
       (* Printf.printf "bt_handle_detach start\n%!"; *)
-      let kv_op_map = Kv_op.default_kvop_map_ops () in
+      let kv_op_map = Kvop.default_kvop_map_ops () in
       let kv_ops = detach_info.past_map |> kv_op_map.bindings |> List.map snd in
       mark d2b_ca; 
       q_dmap_bt.ops.memq_enqueue
@@ -193,7 +193,7 @@ module Make(S:S) = struct
 
 
     let dmap_op_count = ref 0
-    let _ = Pervasives.at_exit (fun () ->
+    let _ = Stdlib.at_exit (fun () ->
         Printf.printf "%s, pcache op count: %d\n" __MODULE__ (!dmap_op_count))
 
     let dmap_thread ~dmap_ops ~yield ~sleep () = 
@@ -292,7 +292,7 @@ module Make(S:S) = struct
     open Msg_dmap_bt
 
     let btree_op_count = ref 0
-    let _ = Pervasives.at_exit (fun () ->
+    let _ = Stdlib.at_exit (fun () ->
         Printf.printf "%s, B-tree op count: %d\n" __MODULE__ (!btree_op_count))
 
     (** The thread listens at the end of the q_dmap_btree for msgs which it
