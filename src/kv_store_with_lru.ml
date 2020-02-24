@@ -360,7 +360,7 @@ module Common_instances = struct
 
   module Int_int = struct
 
-    type leaf_stream = Tjr_btree_examples.Examples.Lwt.Int_int.Btree.leaf_stream
+    type leaf_stream = Tjr_btree_examples.Examples.Int_int_ex.ls
     
     module Internal = struct
       type k = int

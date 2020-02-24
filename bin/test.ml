@@ -6,6 +6,7 @@ open Lwt_aux
 open Kv_store_with_lru.Common_instances.Int_int
 
 module Blk_id = Blk_id_as_int
+type blk_id = Blk_id.blk_id
 
 let test_config = Tjr_kv.Kv_config.config
 
@@ -31,7 +32,7 @@ module Pcache_ = struct
         |> dest_Res2 
         |> fun x -> x.dmap_ops) 
     in
-    return dmap_ops    
+    return dmap_ops
 end
 
 
@@ -67,11 +68,24 @@ let test_thread ~(q:'a Queue.t) () =
   in
   loop 0
 
+(** Runtime state *)
+module Kv_descr = struct
+
+  type kvd = {
+    bt_rt:blk_id ref;
+    blk_alloc:blk_id ref;
+    
+    
+
+end
+
 (** Start dmap, bt and test thread; wait 2s; then print some stats *)
 let _ =
-  let module A = struct
+  let module A = Tjr_btree_examples.Make_example.Pvt.Make_1(S_int_int) in
+(*
+struct
     open Tjr_btree_examples 
-    let example = Examples.Lwt.int_int_example () 
+    let example = Examples.Int_int_exampleLwt.int_int_example () 
     let Examples.{monad_ops;blk_ops;empty_leaf_as_blk; blk_allocator_ref; btree_root_ref; _} = example 
     let ( >>= ) = monad_ops.bind
     let return = monad_ops.return 
@@ -84,6 +98,7 @@ let _ =
 
   end
   in
+*)
   let module B = struct
     open Lwt    
     let _ = 
