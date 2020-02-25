@@ -19,7 +19,7 @@ module Btree_ops = struct
 
 end
 
-module Msg_dmap_bt = struct
+module Msg_pc_bt = struct
   (** The type of messages sent from the DCL to the B-tree.
 
       This is a callback-oriented interface, with operations [find] and
@@ -31,7 +31,7 @@ module Msg_dmap_bt = struct
   open Kvop
   (* open Blk_id_as_int *)
 
-  type ('k,'v,'blk_id,'t) dmap_bt_msg = 
+  type ('k,'v,'blk_id,'t) pc_bt_msg = 
     | Find of 'k * ('v option -> (unit,'t) m)
     | Detach of {
         ops: ('k,'v) kvop list;
@@ -39,12 +39,12 @@ module Msg_dmap_bt = struct
       }
 end
 
-module Msg_lru_dmap = struct
+module Msg_lru_pc = struct
 
   include Tjr_lru_cache.Im_intf.Entry.Export
 
   (* FIXME this should probably be moved to fs_shared *)
-  type ('k,'v,'t) lru_dmap_msg
+  type ('k,'v,'t) lru_pc_msg
     = ('k,'v,'t) Tjr_lru_cache.Mt_intf.Msg_type.msg
     =  Insert of 'k*'v*(unit -> (unit,'t)m)
     | Delete of 'k*(unit -> (unit,'t)m)

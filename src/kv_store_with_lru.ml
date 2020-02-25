@@ -1,8 +1,47 @@
 (** A KV store with an LRU cache frontend. *)
 
-(** We construct the following.
 
-Functional store thread:
+(** {2 Architecture}
+
+{%html: 
+
+<a href="https://imgur.com/yQhDTnG"><img src="https://i.imgur.com/yQhDTnG.png" title="source: imgur.com" width='100%' /></a>
+
+
+%}
+
+We construct the following...
+
+
+
+{3 LRU}
+
+  - q_lru_pc, a msg queue from lru to pcache
+  - Lru and lru_state
+  - lru_thrd, which takes messages from lru.to_lower to enqueue on
+    q_lru_pc; the lru interface itself can be used by many threads safely
+
+
+
+
+{3 Pcache }
+
+  - q_pc_bt, a msg queue from pcache to B-tree
+  - Pcache and pcache_state
+  - pc_thrd, which takes msgs from q_pc_btree and executes against dmap; also performs detach occasionally and enqueue messages to q_pc_bt
+
+
+{3 B-tree}
+
+  - B-tree
+  - bt_thrd listening to q_pc_btree; also includes root manager functionality
+
+*)
+
+(* old doc?
+
+{3 Functional store thread}
+
   - this maintains the "global" state, including locks etc
   - the queues are kept separate since they are implemented using
     mutation anyway FIXME perhaps prefer a "functional" version using
@@ -10,29 +49,6 @@ Functional store thread:
   - includes: lru_state; dmap_state; btree_state (a root pointer?)
   - also includes an Lwt_mvar for communication and implementation of
     with_state (?FIXME still true?)
-
-
-
-LRU:
-  - q_lru_dcl (msg queue from lru to dcl)
-  - Lru (and lru_state)
-  - Lru thread, which takes messages from lru.to_lower to enqueue on
-    q_lru_dcl
-
-
-
-
-Dmap:
-  - q_dmap_bt (msg queue from dmap to btree)
-  - Dmap and dmap_state
-  - Dmap thread, which takes msgs from q_dmap_btree and executes against dmap; also performs detach occasionally and enqueue messages to q_dmap_bt
-
-
-B-tree:
-  - B-tree
-  - B-tree thread (Btree_t) listening to q_dmap_btree; also includes root pair functionality
-
-
 *)
 
 open Tjr_monad.With_lwt
@@ -41,8 +57,19 @@ open Lwt_aux  (* provides various msg queues *)
 
 open Kv_config
 open Kv_profilers
+
 module Blk_id = Blk_id_as_int
+
 type blk_id = Blk_id.blk_id
+
+
+(** We record the system state in a descriptor (kvd = "key-value descriptor") *)
+type ('a,'b,'c,'d) kvd = {
+  q_lru_pc_state:'a;
+  q_pc_bt_state:'b;
+  lru_state:'c;
+  lru_ops:'d;
+}
 
 
 module type S = sig
@@ -53,22 +80,21 @@ module type S = sig
   type leaf_stream
 end
 
-
 module Make(S:S) = struct
   open S
 
-
+  
   type kvop_map_carrier
   type kvop_map = (k,(k,v)kvop,kvop_map_carrier) Tjr_map.map
 
   (** {2 Message queues} *)
-
+                    
   module Queues = Lwt_aux.Make_queues(struct include S type blk_id = Blk_id.blk_id end)
   open Queues
 
   (* NOTE queues are mutable *)
-  let q_lru_dmap_state = q_lru_dmap.initial_state
-  let q_dmap_bt_state = q_dmap_bt.initial_state
+  let q_lru_pc_state = q_lru_pc.initial_state
+  let q_pc_bt_state = q_pc_bt.initial_state
 
 
 
@@ -111,7 +137,7 @@ module Make(S:S) = struct
     let enqueue msg = 
       return () >>= fun () ->
       mark l2d_aa;
-      q_lru_dmap.ops.memq_enqueue ~q:q_lru_dmap_state ~msg >>= fun r -> 
+      q_lru_pc.ops.memq_enqueue ~q:q_lru_pc_state ~msg >>= fun r -> 
       mark l2d_ab;
       return r
 
@@ -134,7 +160,7 @@ module Make(S:S) = struct
     let _ : unit -> (k,v,lwt) mt_ops = lru_ops
 
     let msg2string = 
-      let open Msg_lru_dmap in
+      let open Msg_lru_pc in
       function
       | Insert(k,v,_) -> Printf.sprintf "Insert(%d,%d)" k v
       | Delete(k,_) -> Printf.sprintf "Delete(%d)" k
@@ -148,11 +174,15 @@ module Make(S:S) = struct
   (** {2 Dmap and dmap_thread } *)
 
   module Dmap' : sig
+    type nonrec dmap_ops = (k,v,blk_id,kvop_map,lwt) dmap_ops
+    type nonrec dmap_state = (blk_id,kvop_map) Pcache_intf.Pvt.dmap_state
     val dmap_thread :
-      dmap_ops :(k,v,blk_id,kvop_map,lwt) dmap_ops ->
+      dmap_ops :dmap_ops ->
       yield    :(unit -> unit Lwt.t) ->
       sleep    :(float -> unit Lwt.t) -> unit -> ('a, lwt) m
   end = struct
+    type nonrec dmap_ops = (k,v,blk_id,kvop_map,lwt) dmap_ops
+    type nonrec dmap_state = (blk_id,kvop_map) Pcache_intf.Pvt.dmap_state
 
     let [d2b_aa   ;d2b_ab   ;d2b_ca   ;d2b_cb   ;dmap_l2d_deq1   ;dmap_l2d_deq2   ;dmap_es] = 
       ["d2b:aa" ;"d2b:ab" ;"d2b:ca" ;"d2b:cb" ;"dmap:l2d.deq1" ;"dmap:l2d.deq2" ;"dmap_es"] 
@@ -170,9 +200,9 @@ module Make(S:S) = struct
       event_ops.ev_create () >>= fun ev ->
       let callback = fun v -> event_ops.ev_signal ev v in
       mark d2b_aa; 
-      q_dmap_bt.ops.memq_enqueue
-        ~q:q_dmap_bt_state
-        ~msg:Msg_dmap_bt.(Find(k,callback)) >>= fun () ->
+      q_pc_bt.ops.memq_enqueue
+        ~q:q_pc_bt_state
+        ~msg:Msg_pc_bt.(Find(k,callback)) >>= fun () ->
       mark d2b_ab; 
       event_ops.ev_wait ev
 
@@ -181,9 +211,9 @@ module Make(S:S) = struct
       let kv_op_map = Kvop.default_kvop_map_ops () in
       let kv_ops = detach_info.past_map |> kv_op_map.bindings |> List.map snd in
       mark d2b_ca; 
-      q_dmap_bt.ops.memq_enqueue
-        ~q:q_dmap_bt_state
-        ~msg:Msg_dmap_bt.(Detach {
+      q_pc_bt.ops.memq_enqueue
+        ~q:q_pc_bt_state
+        ~msg:Msg_pc_bt.(Detach {
             ops=kv_ops;
             new_dmap_root=detach_info.current_ptr}) >>= fun _ ->
       mark d2b_cb; 
@@ -236,7 +266,7 @@ module Make(S:S) = struct
         from_lwt(yield ()) >>= fun () ->
         (* Printf.printf "dmap_thread read_and_dispatch starts\n%!"; *)
         mark dmap_l2d_deq1;
-        q_lru_dmap.ops.memq_dequeue q_lru_dmap_state >>= fun msg ->
+        q_lru_pc.ops.memq_dequeue q_lru_pc_state >>= fun msg ->
         mark dmap_l2d_deq2;
         (* Printf.printf "dmap_thread dequeued: %s\n%!" (Lru'.msg2string msg); *)
         (* FIXME the following pause seems to require that the btree
@@ -289,13 +319,13 @@ module Make(S:S) = struct
     [@@warning "-8"]
     let mark = bt_profiler.mark
 
-    open Msg_dmap_bt
+    open Msg_pc_bt
 
     let btree_op_count = ref 0
     let _ = Stdlib.at_exit (fun () ->
         Printf.printf "%s, B-tree op count: %d\n" __MODULE__ (!btree_op_count))
 
-    (** The thread listens at the end of the q_dmap_btree for msgs which it
+    (** The thread listens at the end of the q_pc_btree for msgs which it
         then runs against the B-tree, and records the new root pair. *)
     let btree_thread ~btree_ops ~yield ~sleep () = 
       let module A = struct
@@ -326,7 +356,7 @@ module Make(S:S) = struct
         let rec read_and_dispatch () =
           (* from_lwt(yield()) >>= fun () -> *)
           mark d2b_ea; 
-          q_dmap_bt.ops.memq_dequeue q_dmap_bt_state >>= fun msg ->
+          q_pc_bt.ops.memq_dequeue q_pc_bt_state >>= fun msg ->
           mark d2b_eb; 
           (* from_lwt(sleep bt_thread_delay) >>= fun () ->  (\* FIXME *\) *)
           (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)

@@ -1,3 +1,5 @@
+(*
+
 (** Test the KV store with an LRU frontend *)
 
 open Tjr_monad.With_lwt
@@ -17,22 +19,26 @@ let sleep f = Lwt_unix.sleep f
 let lru_ops = Lru'.lru_ops ()
 
 
+module Ex = Tjr_pcache_example.Int_int_ex
 
-module Pcache_ = struct
+module Runtime_state = struct
+  type rs = {
+    dmap_fd: Lwt_unix.file_descr;
+    blk_aloc:(unit -> (blk_id,lwt)m);
+  }
+
+
+module Pcache_ = struct  
 
   let file_ops = lwt_file_ops
 
   let fn = test_config.dmap_filename 
 
-  let dmap_ops = 
-    file_ops.fd_from_file ~fn ~create:true ~init:true >>= fun fd ->
-    let write_to_disk s = file_ops.write_blk fd (Blk_id.to_int s.current_ptr) (Bigstring.to_bytes s.buf) in
-    let dmap_ops = Tjr_pcache_example.(
-        make (Make2 { write_to_disk } ) 
-        |> dest_Res2 
-        |> fun x -> x.dmap_ops) 
-    in
-    return dmap_ops
+  let dmap_ops ~blk_alloc ~with_dmap = 
+    file_ops.open_ ~fn ~create:true ~init:true >>= fun fd ->
+    (* FIXME shouldn't write_to_disk take a blk_dev_ops? *)
+    let write_to_disk (s:Ex.dmap_state) = file_ops.write_blk fd (Blk_id.to_int s.current_ptr) s.buf in 
+    Tjr_pcache_example.Int_int_ex.make ~blk_alloc ~with_dmap ~write_to_disk
 end
 
 
@@ -74,10 +80,11 @@ module Kv_descr = struct
   type kvd = {
     bt_rt:blk_id ref;
     blk_alloc:blk_id ref;
-    
-    
+  } [@@deriving bin_io]
 
 end
+open Kv_descr
+
 
 (** Start dmap, bt and test thread; wait 2s; then print some stats *)
 let _ =
@@ -104,8 +111,9 @@ struct
     let _ = 
       Lwt_main.run (
         to_lwt Pcache_.dmap_ops >>= fun dmap_ops ->
-        to_lwt (A.from_file ~fn:test_config.bt_filename ~create:true ~init:true) 
-        >>= fun (fd,ba_root,bt_root) -> 
+        to_lwt (lwt_file_ops.open_ ~fn:test_config.bt_filename ~create:true ~init:true)
+        >>= fun fd ->
+        (* (fd,ba_root,bt_root) ->  *)
         let fd = Lwt_unix.of_unix_file_descr fd in
         let example = Tjr_btree_examples.Examples.Lwt.int_int_example () in
         example.blk_allocator_ref := ba_root;
@@ -129,3 +137,4 @@ struct
   end
   in
   ()
+*)

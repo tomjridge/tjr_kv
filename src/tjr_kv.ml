@@ -1,5 +1,7 @@
 (** A key-value store (example instance) *)
 
+(** See {!Kv_store_with_lru} for more details *)
+
 (** {2 Main interfaces} *)
 
 module Kv_intf = Kv_intf

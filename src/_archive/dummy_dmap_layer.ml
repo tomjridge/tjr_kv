@@ -19,7 +19,7 @@ module Queues = Lwt_aux.Make_queues(S)
 open Queues
 
 (* NOTE queues are mutable *)
-let q_lru_dmap_state = q_lru_dmap.initial_state
+let q_lru_pc_state = q_lru_pc.initial_state
 let q_dmap_bt_state = q_dmap_bt.initial_state
 
 (** {2 Simple freespace impl using an incrementing int ref} *)
@@ -137,7 +137,7 @@ end = struct
       from_lwt(yield ()) >>= fun () ->
       (* Printf.printf "dmap_thread read_and_dispatch starts\n%!"; *)
       mark dmap_l2d_deq1;
-      q_lru_dmap.ops.memq_dequeue q_lru_dmap_state >>= fun msg ->
+      q_lru_pc.ops.memq_dequeue q_lru_pc_state >>= fun msg ->
       mark dmap_l2d_deq2;
       (* Printf.printf "dmap_thread dequeued: %s\n%!" (Lru'.msg2string msg); *)
       (* FIXME the following pause seems to require that the btree

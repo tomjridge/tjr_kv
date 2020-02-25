@@ -106,9 +106,9 @@ module Ctxt(Pre:KVRT) = struct
   include Pre
 
   module type LRU_DMAP = sig
-    type msg1 = (k,v,t) Msg_lru_dmap.lru_dmap_msg
+    type msg1 = (k,v,t) Msg_lru_pc.lru_pc_msg
     type q1 = (mutex,cvar,msg1) queue
-    val q_lru_dmap_ops : (msg1,q1,t) memq_ops
+    val q_lru_pc_ops : (msg1,q1,t) memq_ops
   end
   
   (* NOTE leaves in the ctxt tree can be mod types rather than mods *)
@@ -122,7 +122,7 @@ module Ctxt(Pre:KVRT) = struct
 
 
   module type DMAP_BTREE = sig
-    type msg2 = (k,v,blk_id,t) Msg_dmap_bt.dmap_bt_msg
+    type msg2 = (k,v,blk_id,t) Msg_pc_bt.pc_bt_msg
     type q2 = (mutex,cvar,msg2) queue
     val q_dmag_bt_ops : (msg2,q2,t) memq_ops
   end
