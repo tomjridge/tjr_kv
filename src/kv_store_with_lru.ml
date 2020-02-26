@@ -116,7 +116,7 @@ module Make(S:S) = struct
 
     let lru_lock = Lwt_aux.create_mutex()
 
-    module Internal = Tjr_lru_cache.Make(struct
+    module Lru_ = Tjr_lru_cache.Make(struct
         type k = S.k
         let compare = S.compare
         type v = S.v
@@ -126,10 +126,10 @@ module Make(S:S) = struct
         let event_ops = event_ops
       end)
 
-    type mt_state = Internal.mt_state
+    type mt_state = Lru_.mt_state
 
     let lru_state : mt_state ref = 
-      Internal.make_multithreaded_lru.initial_state
+      Lru_.init_state
         ~max_size:lru_max_size
         ~evict_count:lru_evict_count
       |> ref  
@@ -155,7 +155,7 @@ module Make(S:S) = struct
 
 
     (* FIXME no need to shield this *)
-    let lru_ops () = Internal.make_multithreaded_lru.ops ~with_lru ~to_lower
+    let lru_ops () = Lru_.make_multithreaded_lru ~with_lru ~to_lower
 
     let _ : unit -> (k,v,lwt) mt_ops = lru_ops
 
@@ -243,9 +243,9 @@ module Make(S:S) = struct
           match es with
           | [] -> return ()
           | (k,e)::es -> 
-            let open Im_intf in
+            (* let open Tjr_lru_cache in *)
             (* let open Mt_intf in *)
-            match e with
+            match (e:v Tjr_lru_cache.entry) with
             | Insert { value=v; _ } -> 
               dmap_ops.insert k v >>= fun () ->
               loop es

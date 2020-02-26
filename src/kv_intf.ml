@@ -41,15 +41,13 @@ end
 
 module Msg_lru_pc = struct
 
-  include Tjr_lru_cache.Im_intf.Entry.Export
-
   (* FIXME this should probably be moved to fs_shared *)
   type ('k,'v,'t) lru_pc_msg
-    = ('k,'v,'t) Tjr_lru_cache.Mt_intf.Msg_type.msg
+    = ('k,'v,'t) Tjr_lru_cache.msg
     =  Insert of 'k*'v*(unit -> (unit,'t)m)
     | Delete of 'k*(unit -> (unit,'t)m)
     | Find of 'k * ('v option -> (unit,'t)m)
-    | Evictees of ('k * 'v Tjr_lru_cache.Im_intf.entry) list
+    | Evictees of ('k * 'v entry) list
 
 end
 
