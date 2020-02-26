@@ -1,5 +1,3 @@
-(*
-
 (** Test the KV store with an LRU frontend *)
 
 open Tjr_monad.With_lwt
@@ -88,7 +86,7 @@ open Kv_descr
 
 (** Start dmap, bt and test thread; wait 2s; then print some stats *)
 let _ =
-  let module A = Tjr_btree_examples.Make_example.Pvt.Make_1(S_int_int) in
+  let module Btree = Tjr_btree_examples.Make_example.Pvt.Make_1(S_int_int) in
 (*
 struct
     open Tjr_btree_examples 
@@ -137,4 +135,3 @@ struct
   end
   in
   ()
-*)
