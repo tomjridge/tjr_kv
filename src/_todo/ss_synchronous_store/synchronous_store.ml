@@ -40,7 +40,7 @@ module Make(Requires : REQUIRES) = struct
   open Tjr_btree.Map_ops
 
   open Tjr_pcache.Dcl_types
-  open Tjr_pcache.Dmap_types
+  open Tjr_pcache.Pcache_types
          
 
 

@@ -130,10 +130,10 @@ module Ctxt(Pre:KVRT) = struct
   (** The main types and values in scope at the detachable map *)
   module type DMAP = sig   
     (** NOTE this thread "never" terminates; it takes msgs from the
-        lru->dmap queue, and applies them to the log; occasionally the
-        log is detached and the result is put on the dmap->btree queue
+        lru->pcache queue, and applies them to the log; occasionally the
+        log is detached and the result is put on the pcache->btree queue
     *)
-    val dmap_thread: yield:yield_t -> sleep:sleep_t -> unit -> ('a,t)m
+    val pcache_thread: yield:yield_t -> sleep:sleep_t -> unit -> ('a,t)m
   end
 
   module type BTREE_ROOTMAN = sig
@@ -142,7 +142,7 @@ module Ctxt(Pre:KVRT) = struct
   end
 
   module type BTREE = sig
-    (** This thread takes items of dmap->btree, and executes against the btree *)
+    (** This thread takes items of pcache->btree, and executes against the btree *)
     val btree_thread: yield:yield_t -> sleep:sleep_t -> unit -> ('a,t)m        
   end
 
@@ -163,7 +163,7 @@ module States(Pre:KVRT) = struct
   end
 
   module type DMAP = sig
-    open Dmap_types
+    open Pcache_types
     open Dcl_types
 
     (** NOTE typically the internal state is the same for pl and pcl,
@@ -175,9 +175,9 @@ module States(Pre:KVRT) = struct
     (** dcl_state is start_block, current_block etc *)
     type nonrec dcl_state = (r,kvop_map) dcl_state
     type nonrec detach_info = (k,v,r) detach_info
-    type nonrec dmap_ops = (k,v,r,t) dmap_ops
+    type nonrec pcache_ops = (k,v,r,t) pcache_ops
 
-    type dmap_state = pl_and_pcl_internal_state * dcl_state
+    type pcache_state = pl_and_pcl_internal_state * dcl_state
   end
 
 
@@ -205,7 +205,7 @@ module States(Pre:KVRT) = struct
         somewhere on disk (at least, for the roots) eg in block 0 *)
     type rootman_state = {
       blk_dev:fd;
-      dmap_root:blk_id;
+      pcache_root:blk_id;
       btree_root:blk_id;
     }        
   end

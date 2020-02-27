@@ -35,7 +35,7 @@ module Msg_pc_bt = struct
     | Find of 'k * ('v option -> (unit,'t) m)
     | Detach of {
         ops: ('k,'v) kvop list;
-        new_dmap_root: 'blk_id
+        new_pcache_root: 'blk_id
       }
 end
 
@@ -55,13 +55,13 @@ end
 (*
 module Pmap = struct
   (** A persistent map is formed from a B-tree and a detachable map
-      (dmap).
+      (pcache).
 
       The "root" is a pair of the root for the persistent map and the root
       for the B-tree.
 
       When a pmap is constructed, we expect that the implementation requires
-      some way to handle the dmap detach event followed by the B-tree
+      some way to handle the pcache detach event followed by the B-tree
       rollup and the creation of the new root pair.
 
   *)
@@ -124,7 +124,7 @@ module Msg_btree_rootman = struct
 
   (** A pair of roots, one for the detachable map, and one for the B-tree *)
   type 'blk_id msg_btree_rootman = {
-    dmap_root: 'blk_id;
+    pcache_root: 'blk_id;
     btree_root: 'blk_id
   }
 

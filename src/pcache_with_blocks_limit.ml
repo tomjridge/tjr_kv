@@ -1,22 +1,22 @@
-(** This is a dmap (detachable map) which automatically detaches after
+(** This is a pcache (detachable map) which automatically detaches after
    a certain number of blocks *)
 
-type ('k,'v,'t) dmap_with_lim_ops = ('k,'v,'t) Tjr_fs_shared.Shared_map_ops.map_ops
+type ('k,'v,'t) pcache_with_lim_ops = ('k,'v,'t) Tjr_fs_shared.Shared_map_ops.map_ops
 
 (** NOTE bt_find and bt_handle_detach are named for the particular
    application we envisage: a persistent cache which hands over to a
    btree *)
 (** 
 
-Construct the DMAP, which uses the dmap_ops and wraps it in a routine which occasionally executes a B-tree roll-up. 
+Construct the PCACHE, which uses the pcache_ops and wraps it in a routine which occasionally executes a B-tree roll-up. 
 
 Parameters:
 
 - [monad_ops]
 
-- [dmap_ops]: dmap from tjr_pcache, with dmap interface
+- [pcache_ops]: pcache from tjr_pcache, with pcache interface
 
-- [dmap_blocks_limit]: how many blocks in the pcache before
+- [pcache_blocks_limit]: how many blocks in the pcache before
   attempting a roll-up; if the length of pcache is [>=] this limit, we
   attempt a roll-up; NOTE that this limit should be >= 2 (if we roll
   up with 1 block, then in fact nothing gets rolled up because we roll
@@ -35,15 +35,15 @@ Parameters:
   *)
 let make_ops
       ~monad_ops 
-      ~(dmap_ops:('k,'v,'ptr,'kvop_map,'t) dmap_ops)
-      ~dmap_blocks_limit 
+      ~(pcache_ops:('k,'v,'ptr,'kvop_map,'t) pcache_ops)
+      ~pcache_blocks_limit 
       ~bt_find
       ~(bt_handle_detach:('k,'v,'ptr,'kvop_map) detach_info -> (unit,'t)m)
   =
   (* let open Mref_plus in *)
   let ( >>= ) = monad_ops.bind in
   let return = monad_ops.return in
-  let pc = dmap_ops in  (* persistent cache; another name for dmap *)
+  let pc = pcache_ops in  (* persistent cache; another name for pcache *)
   let find k = 
     pc.find k >>= fun v ->
     match v with
@@ -51,11 +51,11 @@ let make_ops
     | Some v -> return (Some v)
   in
   let maybe_roll_up () = 
-    pc.block_list_length () >>= fun n ->
-    match n >= dmap_blocks_limit with
+    pc.blk_len () >>= fun n ->
+    match n >= pcache_blocks_limit with
     | false -> return `No_roll_up_needed
     | true -> 
-      (* Printf.printf "dmap_thread, maybe_roll_up\n%!"; *)
+      (* Printf.printf "pcache_thread, maybe_roll_up\n%!"; *)
       pc.detach () >>= fun detach_result ->
       bt_handle_detach detach_result >>= fun () ->
       return `Ok

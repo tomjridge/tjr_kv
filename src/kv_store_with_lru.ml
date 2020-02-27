@@ -28,7 +28,7 @@ We construct the following...
 
   - q_pc_bt, a msg queue from pcache to B-tree
   - Pcache and pcache_state
-  - pc_thrd, which takes msgs from q_pc_btree and executes against dmap; also performs detach occasionally and enqueue messages to q_pc_bt
+  - pc_thrd, which takes msgs from q_pc_btree and executes against pcache; also performs detach occasionally and enqueue messages to q_pc_bt
 
 
 {3 B-tree}
@@ -46,7 +46,7 @@ We construct the following...
   - the queues are kept separate since they are implemented using
     mutation anyway FIXME perhaps prefer a "functional" version using
     the functional store
-  - includes: lru_state; dmap_state; btree_state (a root pointer?)
+  - includes: lru_state; pcache_state; btree_state (a root pointer?)
   - also includes an Lwt_mvar for communication and implementation of
     with_state (?FIXME still true?)
 *)
@@ -78,14 +78,16 @@ module type S = sig
   type v
 
   type leaf_stream
+  type kvop_map
+  val kvop_map_ops: (k,(k,v)kvop,kvop_map) Tjr_map.map_ops
 end
 
 module Make(S:S) = struct
   open S
 
   
-  type kvop_map_carrier
-  type kvop_map = (k,(k,v)kvop,kvop_map_carrier) Tjr_map.map
+  (* type kvop_map_carrier *)
+  (* type kvop_map = (k,(k,v)kvop,kvop_map_carrier) Tjr_map.map *)
 
   (** {2 Message queues} *)
                     
@@ -171,26 +173,27 @@ module Make(S:S) = struct
   let lru_ops = Lru'.lru_ops
 
 
-  (** {2 Dmap and dmap_thread } *)
+  (** {2 Pcache and pcache_thread } *)
 
-  module Dmap' : sig
-    type nonrec dmap_ops = (k,v,blk_id,kvop_map,lwt) dmap_ops
-    type nonrec dmap_state = (blk_id,kvop_map) Pcache_intf.Pvt.dmap_state
-    val dmap_thread :
-      dmap_ops :dmap_ops ->
+  module Pcache' : sig
+    type nonrec pcache_ops = (k,v,blk_id,kvop_map,lwt) pcache_ops
+    type nonrec pcache_state = (blk_id,kvop_map) Pcache_intf.Pcache_state.pcache_state
+    val pcache_thread :
+      pcache_ops :pcache_ops ->
       yield    :(unit -> unit Lwt.t) ->
       sleep    :(float -> unit Lwt.t) -> unit -> ('a, lwt) m
   end = struct
-    type nonrec dmap_ops = (k,v,blk_id,kvop_map,lwt) dmap_ops
-    type nonrec dmap_state = (blk_id,kvop_map) Pcache_intf.Pvt.dmap_state
 
-    let [d2b_aa   ;d2b_ab   ;d2b_ca   ;d2b_cb   ;dmap_l2d_deq1   ;dmap_l2d_deq2   ;dmap_es] = 
-      ["d2b:aa" ;"d2b:ab" ;"d2b:ca" ;"d2b:cb" ;"dmap:l2d.deq1" ;"dmap:l2d.deq2" ;"dmap_es"] 
+    type nonrec pcache_ops = (k,v,blk_id,kvop_map,lwt) pcache_ops
+    type nonrec pcache_state = (blk_id,kvop_map) Pcache_intf.Pcache_state.pcache_state
+
+    let [d2b_aa   ;d2b_ab   ;d2b_ca   ;d2b_cb   ;pcache_l2d_deq1   ;pcache_l2d_deq2   ;pcache_es] = 
+      ["d2b:aa" ;"d2b:ab" ;"d2b:ca" ;"d2b:cb" ;"pcache:l2d.deq1" ;"pcache:l2d.deq2" ;"pcache_es"] 
       |> List.map intern
     [@@warning "-8"]
-    let mark = dmap_profiler.mark
+    let mark = pcache_profiler.mark
 
-    (* open Dmap_types *)
+    (* open Pcache_types *)
 
     (** Now we fill in the missing components: [bt_find, bt_handle_detach].*)
 
@@ -208,38 +211,37 @@ module Make(S:S) = struct
 
     let bt_handle_detach (detach_info:('k,'v,blk_id,'kvop_map)detach_info) =
       (* Printf.printf "bt_handle_detach start\n%!"; *)
-      let kv_op_map = Kvop.default_kvop_map_ops () in
-      let kv_ops = detach_info.past_map |> kv_op_map.bindings |> List.map snd in
+      let kv_ops = detach_info.past_map |> kvop_map_ops.bindings |> List.map snd in
       mark d2b_ca; 
       q_pc_bt.ops.memq_enqueue
         ~q:q_pc_bt_state
         ~msg:Msg_pc_bt.(Detach {
             ops=kv_ops;
-            new_dmap_root=detach_info.current_ptr}) >>= fun _ ->
+            new_pcache_root=detach_info.current_ptr}) >>= fun _ ->
       mark d2b_cb; 
       return ()
 
     let _ = bt_handle_detach
 
 
-    let dmap_op_count = ref 0
+    let pcache_op_count = ref 0
     let _ = Stdlib.at_exit (fun () ->
-        Printf.printf "%s, pcache op count: %d\n" __MODULE__ (!dmap_op_count))
+        Printf.printf "%s, pcache op count: %d\n" __MODULE__ (!pcache_op_count))
 
-    let dmap_thread ~dmap_ops ~yield ~sleep () = 
-      let dmap_ops = 
-        let raw_dmap_ops = dmap_ops in
-        Dmap_with_blocks_limit.make_ops
+    let pcache_thread ~pcache_ops ~yield ~sleep () = 
+      let pcache_ops = 
+        let raw_pcache_ops = pcache_ops in
+        Pcache_with_blocks_limit.make_ops
           ~monad_ops
-          ~dmap_ops:raw_dmap_ops
-          ~dmap_blocks_limit
+          ~pcache_ops:raw_pcache_ops
+          ~pcache_blocks_limit
           ~bt_find
           ~bt_handle_detach
       in
       let loop_evictees = 
         let rec loop es = 
           from_lwt(yield ()) >>= fun () ->
-          (* Printf.printf "dmap_thread, loop_evictees\n%!"; *)
+          (* Printf.printf "pcache_thread, loop_evictees\n%!"; *)
           match es with
           | [] -> return ()
           | (k,e)::es -> 
@@ -247,10 +249,10 @@ module Make(S:S) = struct
             (* let open Mt_intf in *)
             match (e:v Tjr_lru_cache.entry) with
             | Insert { value=v; _ } -> 
-              dmap_ops.insert k v >>= fun () ->
+              pcache_ops.insert k v >>= fun () ->
               loop es
             | Delete _ -> 
-              dmap_ops.delete k >>= fun () ->
+              pcache_ops.delete k >>= fun () ->
               loop es
             | Lower _ -> 
               Printf.printf "WARNING!!! unexpected evictee: Lower\n%!"; 
@@ -264,41 +266,41 @@ module Make(S:S) = struct
         (* FIXME do we need to yield if we are simply dequeueing? *)
         (* FIXME why is yield coerced to from_lwt? should be monad-agnostic *)
         from_lwt(yield ()) >>= fun () ->
-        (* Printf.printf "dmap_thread read_and_dispatch starts\n%!"; *)
-        mark dmap_l2d_deq1;
+        (* Printf.printf "pcache_thread read_and_dispatch starts\n%!"; *)
+        mark pcache_l2d_deq1;
         q_lru_pc.ops.memq_dequeue q_lru_pc_state >>= fun msg ->
-        mark dmap_l2d_deq2;
-        (* Printf.printf "dmap_thread dequeued: %s\n%!" (Lru'.msg2string msg); *)
+        mark pcache_l2d_deq2;
+        (* Printf.printf "pcache_thread dequeued: %s\n%!" (Lru'.msg2string msg); *)
         (* FIXME the following pause seems to require that the btree
            thread makes progress, but of course it cannot since there
            are no msgs on the queue *)
-        (* from_lwt(sleep dmap_thread_delay) >>= fun () ->  (\* FIXME *\) *)
+        (* from_lwt(sleep pcache_thread_delay) >>= fun () ->  (\* FIXME *\) *)
         match msg with
         | Insert (k,v,callback) ->
-          incr dmap_op_count;
-          dmap_ops.insert k v >>= fun () -> 
+          incr pcache_op_count;
+          pcache_ops.insert k v >>= fun () -> 
           async (fun () -> callback ()) >>= fun () ->
           read_and_dispatch ()
         | Delete (k,callback) ->
-          incr dmap_op_count;
-          dmap_ops.delete k >>= fun () ->
+          incr pcache_op_count;
+          pcache_ops.delete k >>= fun () ->
           async (fun () -> callback ()) >>= fun () ->
           read_and_dispatch ()
         | Find (k,callback) -> 
-          incr dmap_op_count;
-          dmap_ops.find k >>= fun v ->
+          incr pcache_op_count;
+          pcache_ops.find k >>= fun v ->
           async (fun () -> callback v) >>= fun () ->
           read_and_dispatch ()
         | Evictees es -> 
-          dmap_op_count:=!dmap_op_count + List.length es;
-          mark dmap_es;
+          pcache_op_count:=!pcache_op_count + List.length es;
+          mark pcache_es;
           loop_evictees es >>= fun () ->
           read_and_dispatch ()
       in
       read_and_dispatch ()
 
   end
-  let dmap_thread = Dmap'.dmap_thread
+  let pcache_thread = Pcache'.pcache_thread
 
   (** {2 B-tree/btree ops/bt thread} *)
 
@@ -365,15 +367,15 @@ module Make(S:S) = struct
             find ~k >>= fun v ->
             async(fun () -> callback v) >>= fun () ->
             read_and_dispatch ()
-          | Detach { ops; new_dmap_root } ->
+          | Detach { ops; new_pcache_root } ->
             loop ops >>= fun () ->
             (* FIXME what to do with the new root? maybe nothing for the
                time being? *)
             (* FIXME what about root pair? *)
             bt_sync () >>= fun ptr ->        
             Printf.printf 
-              "New root pair: dmap_root=%d, bt_root=%d\n%!"
-              (Blk_id.to_int new_dmap_root)
+              "New root pair: pcache_root=%d, bt_root=%d\n%!"
+              (Blk_id.to_int new_pcache_root)
               (ptr |> Blk_id_as_int.to_int);
             read_and_dispatch ()
       end
@@ -386,24 +388,22 @@ module Make(S:S) = struct
 end
 
 
-module Common_instances = struct
+module Int_int_ex = struct
 
-  module Int_int = struct
+  type leaf_stream = Tjr_btree_examples.Examples.Int_int_ex.ls
 
-    type leaf_stream = Tjr_btree_examples.Examples.Int_int_ex.ls
-    
-    module Internal = struct
-      type k = int
-      let compare = Int_.compare
-      type v = int
-        
-      type nonrec leaf_stream = leaf_stream
-    end
+  module Internal = struct
+    type k = int
+    let compare = Int_.compare
+    type v = int
 
-    module Internal2 = Make(Internal)
-
-    include Internal2
-    
+    type nonrec leaf_stream = leaf_stream
+    type kvop_map = Tjr_pcache_example.Int_int_ex.kvop_map
+    let kvop_map_ops = Tjr_pcache_example.Int_int_ex.kvop_map_ops
   end
+
+  module Internal2 = Make(Internal)
+
+  include Internal2
 
 end

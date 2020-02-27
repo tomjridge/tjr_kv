@@ -7,10 +7,10 @@ module Config_type = struct
     lru_max_size                 :int;
     lru_evict_count              :int;
 
-    dmap_filename                :string; (* where to store the dmap *)
-    dmap_ops_per_block           :int;
-    dmap_blocks_limit            :int;
-    dmap_thread_delay            :float;
+    pcache_filename                :string; (* where to store the pcache *)
+    pcache_ops_per_block           :int;
+    pcache_blocks_limit            :int;
+    pcache_thread_delay            :float;
 
     bt_filename                  :string;
     bt_thread_delay              :float;
@@ -30,10 +30,10 @@ module S = struct
       lru_max_size                 =256;
       lru_evict_count              =128;
 
-      dmap_filename                ="dmap.store";
-      dmap_ops_per_block           =200;
-      dmap_blocks_limit            =10;
-      dmap_thread_delay            =(1e-6);
+      pcache_filename                ="pcache.store";
+      pcache_ops_per_block           =200;
+      pcache_blocks_limit            =10;
+      pcache_thread_delay            =(1e-6);
 
       bt_filename                  ="btree.store";
       bt_thread_delay              =(1e-6);
@@ -53,10 +53,10 @@ let {
   lru_max_size; 
   lru_evict_count; 
   
-  dmap_filename;
-  dmap_ops_per_block;
-  dmap_blocks_limit; 
-  dmap_thread_delay; 
+  pcache_filename;
+  pcache_ops_per_block;
+  pcache_blocks_limit; 
+  pcache_thread_delay; 
 
   bt_filename;
   bt_thread_delay;
