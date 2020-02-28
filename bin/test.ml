@@ -124,7 +124,7 @@ let example =
   (* btree FIXME prefer to just return btree_ops? *)
   let bt_rt_ref = ref bt_rt in
   lwt_file_ops.open_ ~fn:test_config.bt_filename ~create:true ~init:true >>= fun bt_fd ->
-  let btree_ops = BTX.map_ops_with_ls ~note_cached:() bt_fd *) in
+  let btree_ops = BTX.map_ops_with_ls
   let btree_thread = KVX.Btree'.btree_thread ~btree_ops ~yield ~sleep () in
 
   (* pcache *)
