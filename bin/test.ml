@@ -69,35 +69,52 @@ let test_thread ~(q:'a Queue.t) () =
   loop 0
 
 
-(** Runtime state *)
-module Kv_descr = struct
-  open Bin_prot.Std
+(** Rt blk *)
+module Rt_blk = struct
+  (* open Bin_prot.Std *)
 
   (* This is what we want to write in the root block *)
-  type kvd' = {
-    bt_rt         :blk_id ref;
-    blk_alloc_ref :blk_id ref;
-    pc_root       :blk_id ref;
-    pc_current    :blk_id ref;
+  type rt_blk = {
+    bt_rt         :blk_id;
+    blk_alloc_ref :blk_id;
+    pc_root       :blk_id;
+    pc_current    :blk_id;
   } [@@deriving bin_io]
 
-  (* This contains kvd' and the state that we don't persist in the root block *)
+  let write_rt_blk_1 ~write ~rt_blk = 
+    let buf = ba_buf_ops.create 4096 in
+    let _ : int = bin_write_rt_blk buf ~pos:0 rt_blk in
+    write ~blk_id:(B.of_int 0) ~blk:buf
+
+  let write_rt_blk ~(blk_dev_ops:(_,_,_)blk_dev_ops) ~rt_blk = 
+    let write = blk_dev_ops.write in
+    write_rt_blk_1 ~write ~rt_blk
+end
+
+(** Runtime state *)
+module Kv_descr = struct
+  (* This contains the runtime state *)
   type kvd = {
-    kvd'             : kvd';
     bt_fd            : Lwt_unix.file_descr;
     pc_fd            : Lwt_unix.file_descr;
+    bt_rt_ref        : blk_id ref;
+    blk_alloc_ref    : blk_id ref;
     pcache_state_ref : PCX.pcache_state ref
   }
 end
-(* open Kv_descr *)
+open Kv_descr
 
 [@@@warning "-26"]
 
 (** Start pcache, bt and test thread; wait 2s; then print some stats *)
 let example = 
 
+  let bt_rt = B.of_int 1 in
+  let pc_rt = B.of_int 2 in
+  let ba_min_free = B.of_int 3 in
+
   (* blk allocator *)
-  let blk_alloc_ref = ref (B.of_int 3) in
+  let blk_alloc_ref = ref ba_min_free in
   let blk_alloc () = 
     let x = !blk_alloc_ref in
     B.incr blk_alloc_ref;
@@ -105,15 +122,16 @@ let example =
   in
 
   (* btree FIXME prefer to just return btree_ops? *)
-  let bt_rt_ref = ref (B.of_int 0) in
+  let bt_rt_ref = ref bt_rt in
   lwt_file_ops.open_ ~fn:test_config.bt_filename ~create:true ~init:true >>= fun bt_fd ->
-  let btree_ops = failwith "FIXME" (* BTX.map_ops_with_ls ~note_cached:() bt_fd *) in
+  let btree_ops = BTX.map_ops_with_ls ~note_cached:() bt_fd *) in
   let btree_thread = KVX.Btree'.btree_thread ~btree_ops ~yield ~sleep () in
 
   (* pcache *)
-  let pc_root = ref (B.of_int 2) in
-  let pc_current = ref !pc_root in
-  let pcache_state_ref = ref (failwith "FIXME") in (* should share pc_root and pc_current *)
+  let pc_state = Pcache_intf.Pcache_state.empty_pcache_state 
+                   ~root_ptr:pc_rt ~current_ptr:pc_rt ~empty:PCX.kvop_map_ops.empty
+  in
+  let pcache_state_ref = ref pc_state in (* should share pc_root and pc_current *)
   let with_pcache = { with_state=(fun f -> 
       f ~state:!pcache_state_ref ~set_state:(fun s -> pcache_state_ref:=s; return ())) }
   in
@@ -123,21 +141,32 @@ let example =
   PCX.make ~blk_alloc ~with_pcache ~flush_tl |> return >>= fun pcache_ops -> 
   let pcache_thread = KVX.Pcache'.pcache_thread ~pcache_ops ~yield ~sleep () in  
 
+  (* now we can construct the runtime state *)
+  let _kvd = {
+    bt_fd;
+    pc_fd;
+    bt_rt_ref;
+    blk_alloc_ref;
+    pcache_state_ref
+  } in
+
+  let main_thread = Lwt.(
+      Lwt_unix.sleep 2.0 >>= fun () ->
+      Printf.printf "Queue sizes: lru2pcache:%d; pcache2bt:%d\n%!" 
+        (Queue.length KVX.q_lru_pc_state.q)
+        (Queue.length KVX.q_pc_bt_state.q);
+      Printf.printf "B-tree root: %d\n" (!bt_rt_ref |> B.to_int);
+      Printf.printf "Blk allocator state (min_free_blk_id): %d\n" (B.to_int !blk_alloc_ref);
+      return ())
+  in
+
   (* all threads *)
   Lwt.choose [
     to_lwt pcache_thread;
-      to_lwt btree_thread;
-      to_lwt @@ test_thread ~q:KVX.q_lru_pc_state.q ();
-      Lwt.(
-        Lwt_unix.sleep 2.0 >>= fun () ->
-        Printf.printf "Queue sizes: lru2pcache:%d; pcache2bt:%d\n%!" 
-          (Queue.length KVX.q_lru_pc_state.q)
-          (Queue.length KVX.q_pc_bt_state.q);
-        let btree_root = failwith "" (* (!(example.btree_root_ref)).btree_root |> B.to_int *) in
-        Printf.printf "B-tree root: %d\n" btree_root;
-        Printf.printf "Blk allocator state (min_free_blk_id): %d\n" (B.to_int !blk_alloc_ref);
-        return ()
-      )]
+    to_lwt btree_thread;
+    (to_lwt @@ test_thread ~q:KVX.q_lru_pc_state.q ());
+    main_thread
+  ]
   |> from_lwt
 
 let _ = Lwt_main.run (to_lwt example)

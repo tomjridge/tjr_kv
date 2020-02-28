@@ -77,6 +77,7 @@ module type S = sig
   val compare: k -> k -> int
   type v
 
+  (* FIXME the following should not be needed *)
   type leaf_stream
   type kvop_map
   val kvop_map_ops: (k,(k,v)kvop,kvop_map) Tjr_map.map_ops
