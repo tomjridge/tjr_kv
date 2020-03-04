@@ -6,19 +6,21 @@ let file_ops = lwt_file_ops
 open Tjr_kv
 open Lwt_aux
 
-
-let test_config = Tjr_kv.Kv_config.config
+let test_config = Kv_runtime_config.config
 
 module Blk_id = Blk_id_as_int
 module B = Blk_id_as_int
 
 type blk_id = Blk_id.blk_id[@@deriving bin_io]
 
-module BTX = Tjr_btree_examples.Examples.Int_int_ex
+type blk = ba_buf
+
+module BTX = Tjr_btree_examples.Make_2.Int_int_ex
 
 module PCX = Tjr_pcache_example.Int_int_ex
 
 module KVX = Kv_store_with_lru.Int_int_ex
+
 
 
 module Pvt_lwt = struct
@@ -81,28 +83,37 @@ module Rt_blk = struct
     pc_current    :blk_id;
   } [@@deriving bin_io]
 
-  let write_rt_blk_1 ~write ~rt_blk = 
-    let buf = ba_buf_ops.create 4096 in
-    let _ : int = bin_write_rt_blk buf ~pos:0 rt_blk in
-    write ~blk_id:(B.of_int 0) ~blk:buf
-
-  let write_rt_blk ~(blk_dev_ops:(_,_,_)blk_dev_ops) ~rt_blk = 
-    let write = blk_dev_ops.write in
-    write_rt_blk_1 ~write ~rt_blk
+  class type manager = object
+    (* val blk_dev_ops       : (blk_id,buf,lwt)blk_dev_ops *)
+    method write_to_disk  : rt_blk -> (unit,lwt)m
+    method read_from_disk : unit -> (rt_blk,lwt)m
+  end
+    
+  let manager blk_dev_ops : manager = 
+    let b0 = B.of_int 0 in
+    let write_to_disk rt_blk =
+      let buf = ba_buf_ops.create 4096 in
+      let _ : int = bin_write_rt_blk buf ~pos:0 rt_blk in
+      blk_dev_ops.write ~blk_id:b0 ~blk:buf
+    in
+    let read_from_disk () =
+      blk_dev_ops.read ~blk_id:b0 >>= fun buf -> 
+      bin_read_rt_blk buf ~pos_ref:(ref 0) |> return
+    in
+    object
+      val blk_dev_ops=blk_dev_ops
+      method write_to_disk = write_to_disk
+      method read_from_disk = read_from_disk
+    end
 end
 
-(** Runtime state *)
-module Kv_descr = struct
-  (* This contains the runtime state *)
-  type kvd = {
-    bt_fd            : Lwt_unix.file_descr;
-    pc_fd            : Lwt_unix.file_descr;
-    bt_rt_ref        : blk_id ref;
-    blk_alloc_ref    : blk_id ref;
-    pcache_state_ref : PCX.pcache_state ref
-  }
-end
-open Kv_descr
+(** Runtime state (kvd is key-value descriptor) *)
+type kvd = {
+  fd               : Lwt_unix.file_descr;
+  bt_rt_ref        : blk_id ref;
+  blk_alloc_ref    : blk_id ref;
+  pcache_state_ref : PCX.pcache_state ref
+}
 
 [@@@warning "-26"]
 
@@ -113,6 +124,15 @@ let example =
   let pc_rt = B.of_int 2 in
   let ba_min_free = B.of_int 3 in
 
+  let bt_rt_ref = ref bt_rt in
+  
+  lwt_file_ops.open_ ~fn:test_config.bt_filename ~create:true ~init:true >>= fun fd ->
+
+  let x = Blk_dev_factory.(make_7 fd) in
+  let module X = (val x) in
+  let open X in
+  
+
   (* blk allocator *)
   let blk_alloc_ref = ref ba_min_free in
   let blk_alloc () = 
@@ -121,10 +141,15 @@ let example =
     return x
   in
 
+  let kvd = {
+    fd;
+    bt_rt_ref=ref bt_rt;
+    blk_alloc_ref;
+    pcache_state_ref=ref 
+
   (* btree FIXME prefer to just return btree_ops? *)
   let bt_rt_ref = ref bt_rt in
-  lwt_file_ops.open_ ~fn:test_config.bt_filename ~create:true ~init:true >>= fun bt_fd ->
-  let btree_ops = BTX.map_ops_with_ls
+  let btree = BTX.make ~blk_dev_ops ~blk_alloc ~root_ops
   let btree_thread = KVX.Btree'.btree_thread ~btree_ops ~yield ~sleep () in
 
   (* pcache *)

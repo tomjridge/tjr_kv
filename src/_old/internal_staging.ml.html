@@ -1,0 +1,358 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"
+"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <title>internal_staging.ml</title>
+<meta name="generator" content="emacs 26.1; htmlfontify 0.21" />
+<style type="text/css"><!-- 
+body { font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  color: #232627;  background: #fcfcfc;  font-size: 11pt;  text-decoration: none; }
+span.default   { font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  color: #232627;  background: #fcfcfc;  font-size: 11pt;  text-decoration: none; }
+span.default a { font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  color: #232627;  background: #fcfcfc;  font-size: 11pt;  text-decoration: underline; }
+span.constructor   { font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  color: #232627;  background: #fcfcfc;  font-size: 11pt;  text-decoration: none; }
+span.constructor a { font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  color: #232627;  background: #fcfcfc;  font-size: 11pt;  text-decoration: underline; }
+span.label   { color: #008b8b;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: none; }
+span.label a { color: #008b8b;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: underline; }
+span.variable-name   { color: #a0522d;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: none; }
+span.variable-name a { color: #a0522d;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: underline; }
+span.comment   { color: #b22222;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: none; }
+span.comment a { color: #b22222;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: underline; }
+span.comment-delimiter   { color: #b22222;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: none; }
+span.comment-delimiter a { color: #b22222;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: underline; }
+span.function-name   { color: #0000ff;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: none; }
+span.function-name a { color: #0000ff;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: underline; }
+span.type   { color: #228b22;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: none; }
+span.type a { color: #228b22;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: underline; }
+span.operator   { color: #a52a2a;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: none; }
+span.operator a { color: #a52a2a;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: underline; }
+span.module   { color: #228b22;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: none; }
+span.module a { color: #228b22;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: underline; }
+span.governing   { color: #000000;  font-weight: 700;  font-family: Ubuntu Mono;  font-stretch: normal;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: none; }
+span.governing a { color: #000000;  font-weight: 700;  font-family: Ubuntu Mono;  font-stretch: normal;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: underline; }
+span.doc   { color: #8b2252;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: none; }
+span.doc a { color: #8b2252;  font-family: Ubuntu Mono;  font-stretch: normal;  font-weight: 500;  font-style: normal;  background: #fcfcfc;  font-size: 11pt;  text-decoration: underline; }
+ --></style>
+
+    <script type="text/javascript"><!--
+  // this function is needed to work around
+  // a bug in IE related to element attributes
+  function hasClass(obj)
+  {
+      var result = false;
+      if (obj.getAttributeNode("class") != null)
+      {
+          result = obj.getAttributeNode("class").value;
+      }
+      return result;
+  }
+
+  function stripe(id)
+  {
+      // the flag we'll use to keep track of
+      // whether the current row is odd or even
+      var even = false;
+
+      // if arguments are provided to specify the colors
+      // of the even & odd rows, then use them;
+      // otherwise use the following defaults:
+      var evenColor = arguments[1] ? arguments[1] : "#fff";
+      var oddColor  = arguments[2] ? arguments[2] : "#ddd";
+
+      // obtain a reference to the desired table
+      // if no such table exists, abort
+      var table = document.getElementById(id);
+      if (! table) { return; }
+
+      // by definition, tables can have more than one tbody
+      // element, so we'll have to get the list of child
+      // &lt;tbody&gt;s
+      var tbodies = table.getElementsByTagName("tbody");
+
+      // and iterate through them...
+      for (var h = 0; h < tbodies.length; h++)
+      {
+          // find all the &lt;tr&gt; elements...
+          var trs = tbodies[h].getElementsByTagName("tr");
+
+          // ... and iterate through them
+          for (var i = 0; i < trs.length; i++)
+          {
+              // avoid rows that have a class attribute
+              // or backgroundColor style
+              if (! hasClass(trs[i]) &&
+                  ! trs[i].style.backgroundColor)
+              {
+                  // get all the cells in this row...
+                  var tds = trs[i].getElementsByTagName("td");
+
+                  // and iterate through them...
+                  for (var j = 0; j < tds.length; j++)
+                  {
+                      var mytd = tds[j];
+
+                      // avoid cells that have a class attribute
+                      // or backgroundColor style
+                      if (! hasClass(mytd) &&
+                          ! mytd.style.backgroundColor)
+                      {
+                          mytd.style.backgroundColor =
+                            even ? evenColor : oddColor;
+                      }
+                  }
+              }
+              // flip from odd to even, or vice-versa
+              even =  ! even;
+          }
+      }
+  }
+
+  function toggle_invis( name )
+  {
+      var filter =
+        { acceptNode:
+          function( node )
+          { var classname = node.id;
+            if( classname )
+            { var classbase = classname.substr( 0, name.length );
+              if( classbase == name ) { return NodeFilter.FILTER_ACCEPT; } }
+            return NodeFilter.FILTER_SKIP; } };
+      var walker = document.createTreeWalker( document.body           ,
+                                              NodeFilter.SHOW_ELEMENT ,
+                                              filter                  ,
+                                              false                   );
+      while( walker.nextNode() )
+      {
+          var e = walker.currentNode;
+          if( e.style.display == "none" ) { e.style.display = "inline"; }
+          else                            { e.style.display = "none";   }
+      }
+  }
+--> </script>
+  </head>
+  <body onload="stripe('index'); return true;">
+
+<pre><span class="doc">(** INTERNAL PLEASE IGNORE This is another attempt to isolate the
+   various stages of type construction. *)</span>
+
+<span class="governing">open </span><span class="module">Kv_intf</span>
+
+<span class="governing">module</span> <span class="governing">type</span> <span class="module">M</span> <span class="operator">=</span> <span class="governing">sig</span>
+  <span class="governing">type</span> <span class="type">t</span>
+  <span class="governing">val</span> <span class="function-name">monad_ops</span><span class="operator">:</span> t monad_ops
+<span class="governing">end</span>
+
+
+<span class="governing">module</span> <span class="governing">type</span> <span class="module">B1</span> <span class="operator">=</span> <span class="governing">sig</span>
+  <span class="governing">type</span> <span class="type">blk_id</span>
+  <span class="governing">type</span> <span class="type">blk</span>
+  <span class="governing">val</span> <span class="function-name">blk_ops</span><span class="operator">:</span> blk blk_ops
+<span class="governing">end</span>
+
+<span class="governing">module</span> <span class="governing">type</span> <span class="module">B2</span> <span class="operator">=</span> <span class="governing">sig</span>
+  <span class="governing">include</span> <span class="module">M</span>
+  <span class="governing">include</span> <span class="module">B1</span>
+  <span class="doc">(** NOTE typically blk_dev_ops requires eg a file_descr *)</span>
+  <span class="governing">val</span> <span class="function-name">blk_dev_ops</span><span class="operator">:</span> <span class="operator">(</span>blk_id<span class="operator">,</span>blk<span class="operator">,</span>t<span class="operator">)</span>blk_dev_ops
+  <span class="governing">val</span> <span class="function-name">blk_layer</span><span class="operator">:</span> <span class="operator">(</span>blk<span class="operator">,(</span>blk_id<span class="operator">,</span>blk<span class="operator">,</span>t<span class="operator">)</span>blk_dev_ops<span class="operator">)</span>blk_layer
+<span class="governing">end</span>
+
+
+<span class="governing">module</span> <span class="governing">type</span> <span class="module">K1</span> <span class="operator">=</span> <span class="governing">sig</span>
+  <span class="governing">type</span> <span class="type">k</span>
+  <span class="governing">val</span> <span class="function-name">compare_k</span><span class="operator">:</span> k <span class="operator">-&gt;</span> k <span class="operator">-&gt;</span> int
+  <span class="governing">type</span> <span class="type">v</span>
+<span class="governing">end</span>
+
+<span class="governing">module</span> <span class="governing">type</span> <span class="module">KB1</span> <span class="operator">=</span> <span class="governing">sig</span>
+  <span class="governing">include</span> <span class="module">B1</span>
+  <span class="governing">include</span> <span class="module">K1</span>
+<span class="governing">end</span>
+
+<span class="governing">module</span> <span class="governing">type</span> <span class="module">KB2</span> <span class="operator">=</span> <span class="governing">sig</span>
+  <span class="governing">include</span> <span class="module">KB1</span>
+  <span class="comment-delimiter">(* </span><span class="comment">B-tree marshal </span><span class="comment-delimiter">*)</span>
+<span class="governing">end</span>
+
+<span class="governing">module</span> <span class="governing">type</span> <span class="module">KB3</span> <span class="operator">=</span> <span class="governing">sig</span>
+  <span class="comment-delimiter">(* </span><span class="comment">pcache marshal </span><span class="comment-delimiter">*)</span>
+<span class="governing">end</span>
+
+
+<span class="doc">(** argument to B-tree make *)</span>
+<span class="governing">module</span> <span class="governing">type</span> <span class="module">BT1</span> <span class="operator">=</span> <span class="governing">sig</span>
+  <span class="governing">include</span> <span class="module">M</span>
+  <span class="governing">include</span> <span class="module">K1</span>
+  <span class="governing">include</span> <span class="module">B1</span> <span class="comment-delimiter">(* </span><span class="comment">only need blk_id </span><span class="comment-delimiter">*)</span>
+  <span class="governing">type</span> <span class="type">r</span> <span class="operator">=</span> blk_id
+<span class="governing">end</span>
+
+<span class="governing">module</span> <span class="module">I</span> <span class="operator">=</span> <span class="module">Isa_btree.Isa_btree_intf</span>
+<span class="governing">module</span> <span class="module">B</span> <span class="operator">=</span> <span class="module">Tjr_btree.Btree_intf</span>
+
+<span class="doc">(** result of B-tree make; NOTE that B.disk_ops contains the dnode
+   marshalling code, and that this is an argument to most of the
+   constructor functions in Tjr_btree.Make *)</span>
+<span class="governing">module</span> <span class="governing">type</span> <span class="module">BT2</span> <span class="operator">=</span> <span class="governing">sig</span>
+  <span class="governing">include</span> <span class="module">BT1</span>
+  <span class="governing">type</span> <span class="type">leaf</span>
+  <span class="governing">type</span> <span class="type">node</span>
+  <span class="governing">type</span> <span class="type">leaf_stream</span>
+  <span class="governing">type</span> <span class="type">dnode</span> <span class="operator">=</span> <span class="operator">(</span>node<span class="operator">,</span>leaf<span class="operator">)</span><span class="module">I.</span>dnode
+  <span class="governing">val</span> <span class="function-name">leaf_ops</span><span class="operator">:</span> <span class="operator">(</span>k<span class="operator">,</span>v<span class="operator">,</span>leaf<span class="operator">)</span><span class="module">I.</span>leaf_ops
+  <span class="governing">val</span> <span class="function-name">node_ops</span><span class="operator">:</span> <span class="operator">(</span>k<span class="operator">,</span>r<span class="operator">,</span>node<span class="operator">)</span><span class="module">I.</span>node_ops
+  <span class="governing">type</span> <span class="type">disk_ops</span> <span class="operator">=</span> <span class="operator">(</span>r<span class="operator">,</span>t<span class="operator">,</span>dnode<span class="operator">,</span>blk<span class="operator">)</span> <span class="module">B.</span>disk_ops
+  <span class="governing">type</span> <span class="type">store_ops</span> <span class="operator">=</span> <span class="operator">(</span>r<span class="operator">,</span>dnode<span class="operator">,</span>t<span class="operator">)</span> <span class="module">I.</span>store_ops
+  <span class="governing">type</span> <span class="type">pre_btree_ops</span> <span class="operator">=</span> <span class="operator">(</span>k<span class="operator">,</span>v<span class="operator">,</span>r<span class="operator">,</span>t<span class="operator">,</span>leaf<span class="operator">,</span>node<span class="operator">,</span>leaf_stream<span class="operator">)</span> <span class="module">I.</span>pre_btree_ops
+  <span class="governing">val</span> <span class="function-name">make_something</span><span class="operator">:</span> disk_ops <span class="operator">-&gt;</span> unit
+<span class="governing">end</span>
+
+
+
+<span class="doc">(** {2 Older version} *)</span>
+
+
+<span class="doc">(** These types are common to almost all the components (well, perhaps
+   the root manager deals with blks rather than kvrt) *)</span>
+<span class="governing">module</span> <span class="governing">type</span> <span class="module">KVRT</span> <span class="operator">=</span> <span class="governing">sig</span>
+  <span class="governing">type</span> <span class="type">k</span>
+  <span class="governing">type</span> <span class="type">v</span>
+  <span class="governing">type</span> <span class="type">r</span>
+  <span class="governing">type</span> <span class="type">blk_id</span> <span class="operator">=</span> r
+
+  <span class="governing">type</span> <span class="type">t</span>
+
+  <span class="doc">(** Once the [t] monad type is fixed, the mutex and cvar types are usually also fixed *)</span>
+  <span class="governing">type</span> <span class="type">mutex</span>
+  <span class="governing">type</span> <span class="type">cvar</span> 
+
+  <span class="doc">(** The type of the monadic yield *)</span>
+  <span class="governing">type</span> <span class="type">yield_t</span>
+    
+  <span class="doc">(** The type of the monadic sleep *)</span>
+  <span class="governing">type</span> <span class="type">sleep_t</span>
+<span class="governing">end</span>  
+
+<span class="doc">(** The following module is for system architecture documentation purposes *)</span>
+<span class="governing">module</span> <span class="module">Ctxt</span><span class="operator">(</span><span class="variable-name">Pre</span><span class="operator">:</span><span class="type">KVRT</span><span class="operator">)</span><span class="variable-name"> </span><span class="operator">=</span> <span class="governing">struct</span>
+  <span class="governing">open </span><span class="module">Memq_intf</span>
+  <span class="governing">include</span> <span class="module">Pre</span>
+
+  <span class="governing">module</span> <span class="governing">type</span> <span class="module">LRU_DMAP</span> <span class="operator">=</span> <span class="governing">sig</span>
+    <span class="governing">type</span> <span class="type">msg1</span> <span class="operator">=</span> <span class="operator">(</span>k<span class="operator">,</span>v<span class="operator">,</span>t<span class="operator">)</span> <span class="module">Msg_lru_dmap.</span>lru_dmap_msg
+    <span class="governing">type</span> <span class="type">q1</span> <span class="operator">=</span> <span class="operator">(</span>mutex<span class="operator">,</span>cvar<span class="operator">,</span>msg1<span class="operator">)</span> queue
+    <span class="governing">val</span> <span class="function-name">q_lru_dmap_ops</span> <span class="operator">:</span> <span class="operator">(</span>msg1<span class="operator">,</span>q1<span class="operator">,</span>t<span class="operator">)</span> memq_ops
+  <span class="governing">end</span>
+  
+  <span class="comment-delimiter">(* </span><span class="comment">NOTE leaves in the ctxt tree can be mod types rather than mods </span><span class="comment-delimiter">*)</span>
+  <span class="doc">(** The main types and values in scope at the Lru layer *)</span>
+  <span class="governing">module</span> <span class="governing">type</span> <span class="module">LRU</span> <span class="operator">=</span> <span class="governing">sig</span>
+    <span class="governing">open </span><span class="module">Syncable_map</span>
+    <span class="governing">type</span> <span class="type">lru_ops</span> <span class="operator">=</span> <span class="operator">(</span>k<span class="operator">,</span>v<span class="operator">,</span>r<span class="operator">,</span>t<span class="operator">)</span> syncable_map_with_pmode
+    <span class="governing">val</span> <span class="function-name">lru_ops</span><span class="operator">:</span> lru_ops
+    <span class="comment-delimiter">(* </span><span class="comment">NOTE no lru thread; lru_callback_ops are used instead </span><span class="comment-delimiter">*)</span> 
+  <span class="governing">end</span>
+
+
+  <span class="governing">module</span> <span class="governing">type</span> <span class="module">DMAP_BTREE</span> <span class="operator">=</span> <span class="governing">sig</span>
+    <span class="governing">type</span> <span class="type">msg2</span> <span class="operator">=</span> <span class="operator">(</span>k<span class="operator">,</span>v<span class="operator">,</span>blk_id<span class="operator">,</span>t<span class="operator">)</span> <span class="module">Msg_dmap_bt.</span>dmap_bt_msg
+    <span class="governing">type</span> <span class="type">q2</span> <span class="operator">=</span> <span class="operator">(</span>mutex<span class="operator">,</span>cvar<span class="operator">,</span>msg2<span class="operator">)</span> queue
+    <span class="governing">val</span> <span class="function-name">q_dmag_bt_ops</span> <span class="operator">:</span> <span class="operator">(</span>msg2<span class="operator">,</span>q2<span class="operator">,</span>t<span class="operator">)</span> memq_ops
+  <span class="governing">end</span>
+
+  <span class="doc">(** The main types and values in scope at the detachable map *)</span>
+  <span class="governing">module</span> <span class="governing">type</span> <span class="module">DMAP</span> <span class="operator">=</span> <span class="governing">sig</span>   
+    <span class="doc">(** NOTE this thread &quot;never&quot; terminates; it takes msgs from the
+        lru-&gt;dmap queue, and applies them to the log; occasionally the
+        log is detached and the result is put on the dmap-&gt;btree queue
+    *)</span>
+    <span class="governing">val</span> <span class="function-name">dmap_thread</span><span class="operator">:</span> <span class="label">yield</span><span class="operator">:</span>yield_t <span class="operator">-&gt;</span> <span class="label">sleep</span><span class="operator">:</span>sleep_t <span class="operator">-&gt;</span> unit <span class="operator">-&gt;</span> <span class="operator">(</span>'a<span class="operator">,</span>t<span class="operator">)</span>m
+  <span class="governing">end</span>
+
+  <span class="governing">module</span> <span class="governing">type</span> <span class="module">BTREE_ROOTMAN</span> <span class="operator">=</span> <span class="governing">sig</span>
+    <span class="governing">open </span><span class="module">Msg_btree_rootman</span>
+    <span class="governing">type</span> <span class="type">msg3</span> <span class="operator">=</span> blk_id msg_btree_rootman
+  <span class="governing">end</span>
+
+  <span class="governing">module</span> <span class="governing">type</span> <span class="module">BTREE</span> <span class="operator">=</span> <span class="governing">sig</span>
+    <span class="doc">(** This thread takes items of dmap-&gt;btree, and executes against the btree *)</span>
+    <span class="governing">val</span> <span class="function-name">btree_thread</span><span class="operator">:</span> <span class="label">yield</span><span class="operator">:</span>yield_t <span class="operator">-&gt;</span> <span class="label">sleep</span><span class="operator">:</span>sleep_t <span class="operator">-&gt;</span> unit <span class="operator">-&gt;</span> <span class="operator">(</span>'a<span class="operator">,</span>t<span class="operator">)</span>m        
+  <span class="governing">end</span>
+
+  <span class="governing">module</span> <span class="governing">type</span> <span class="module">ROOTMAN</span> <span class="operator">=</span> <span class="governing">sig</span>
+    <span class="governing">val</span> <span class="function-name">rootman_thread</span><span class="operator">:</span> <span class="label">yield</span><span class="operator">:</span>yield_t <span class="operator">-&gt;</span> <span class="label">sleep</span><span class="operator">:</span>sleep_t <span class="operator">-&gt;</span> unit <span class="operator">-&gt;</span> <span class="operator">(</span>'a<span class="operator">,</span>t<span class="operator">)</span>m
+  <span class="governing">end</span>
+<span class="governing">end</span>
+
+
+<span class="doc">(** Documentation of the various state types of the components *)</span>
+<span class="governing">module</span> <span class="module">States</span><span class="operator">(</span><span class="variable-name">Pre</span><span class="operator">:</span><span class="type">KVRT</span><span class="operator">)</span><span class="variable-name"> </span><span class="operator">=</span> <span class="governing">struct</span>
+  <span class="governing">include</span> <span class="module">Pre</span>
+
+  <span class="governing">module</span> <span class="governing">type</span> <span class="module">LRU</span> <span class="operator">=</span> <span class="governing">sig</span>
+    <span class="governing">type</span> <span class="type">k_map</span>
+    <span class="governing">type</span> <span class="type">t_map</span>
+    <span class="governing">type</span> <span class="governing">nonrec</span> <span class="type">lru_state</span> <span class="operator">=</span> <span class="operator">(</span>k<span class="operator">,</span>v<span class="operator">,</span>k_map<span class="operator">,</span>t_map<span class="operator">,</span>t<span class="operator">)</span> <span class="module">Mt_state_type.</span>mt_state
+  <span class="governing">end</span>
+
+  <span class="governing">module</span> <span class="module">With_blk_id</span><span class="operator">(</span><span class="constructor">Blk_id</span><span class="operator">:</span><span class="governing">sig</span> <span class="governing">type</span> <span class="type">blk_id</span> <span class="operator">=</span> r <span class="governing">end</span><span class="operator">)</span> <span class="operator">=</span> <span class="governing">struct</span>
+    <span class="governing">open </span><span class="module">Blk_id</span>
+
+    <span class="governing">module</span> <span class="governing">type</span> <span class="module">DMAP</span> <span class="operator">=</span> <span class="governing">sig</span>
+      <span class="governing">open </span><span class="module">Dmap_types</span>
+      <span class="governing">open </span><span class="module">Dcl_types</span>
+
+      <span class="doc">(** NOTE typically the internal state is the same for pl and pcl,
+          and is a buffer and an int *)</span>
+      <span class="governing">type</span> <span class="type">pl_and_pcl_internal_state</span> 
+
+      <span class="governing">type</span> <span class="type">kvop_map</span>
+
+      <span class="doc">(** dcl_state is start_block, current_block etc *)</span>
+      <span class="governing">type</span> <span class="governing">nonrec</span> <span class="type">dcl_state</span> <span class="operator">=</span> <span class="operator">(</span>r<span class="operator">,</span>kvop_map<span class="operator">)</span> dcl_state
+      <span class="governing">type</span> <span class="governing">nonrec</span> <span class="type">detach_info</span> <span class="operator">=</span> <span class="operator">(</span>k<span class="operator">,</span>v<span class="operator">,</span>r<span class="operator">)</span> detach_info
+      <span class="governing">type</span> <span class="governing">nonrec</span> <span class="type">dmap_ops</span> <span class="operator">=</span> <span class="operator">(</span>k<span class="operator">,</span>v<span class="operator">,</span>r<span class="operator">,</span>t<span class="operator">)</span> dmap_ops
+
+      <span class="governing">type</span> <span class="type">dmap_state</span> <span class="operator">=</span> pl_and_pcl_internal_state <span class="operator">*</span> dcl_state
+    <span class="governing">end</span>
+
+
+    <span class="governing">module</span> <span class="governing">type</span> <span class="module">BTREE</span> <span class="operator">=</span> <span class="governing">sig</span>
+      <span class="doc">(** These fixed types are placeholders *)</span>
+      <span class="governing">type</span> <span class="type">t1</span>
+      <span class="governing">type</span> <span class="type">t2</span>
+
+      <span class="doc">(** NOTE: our examples use a file descriptor as a reference to the &quot;block device&quot; *)</span>
+      <span class="governing">type</span> <span class="type">fd</span>
+
+      <span class="doc">(** This is the state held in memory while the B-tree executes *)</span>
+      <span class="governing">type</span> <span class="type">btree_state</span> <span class="operator">=</span> <span class="operator">{</span>
+        blk_allocator_state<span class="operator">:</span>t1<span class="operator">;</span>
+        fstore_state<span class="operator">:</span>t2<span class="operator">;</span>
+        btree_root_blk<span class="operator">:</span>blk_id<span class="operator">;</span>
+        blk_dev<span class="operator">:</span>fd
+      <span class="operator">}</span>
+    <span class="governing">end</span>
+
+
+    <span class="governing">module</span> <span class="governing">type</span> <span class="module">ROOTMAN</span> <span class="operator">=</span> <span class="governing">sig</span>
+      <span class="governing">type</span> <span class="type">fd</span>
+      <span class="doc">(** This is the state held in memory and presumably mirrored
+          somewhere on disk (at least, for the roots) eg in block 0 *)</span>
+      <span class="governing">type</span> <span class="type">rootman_state</span> <span class="operator">=</span> <span class="operator">{</span>
+        blk_dev<span class="operator">:</span>fd<span class="operator">;</span>
+        dmap_root<span class="operator">:</span>blk_id<span class="operator">;</span>
+        btree_root<span class="operator">:</span>blk_id<span class="operator">;</span>
+      <span class="operator">}</span>        
+    <span class="governing">end</span>
+
+    <span class="doc">(** NOTE The system state is composed of the above, plus the
+       contents of the queues, plus the contents of the caches (eg the
+       store cache) *)</span>
+  <span class="governing">end</span>
+<span class="governing">end</span>
+
+
+</pre>
+
+ </body>
+</html>

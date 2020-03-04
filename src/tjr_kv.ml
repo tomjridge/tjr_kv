@@ -10,7 +10,7 @@ include Kv_intf
 
 (** {2 Configuration} *)
 
-module Kv_config = Kv_config
+module Kv_runtime_config = Kv_runtime_config
 
 
 (** {2 Lwt aux} *)
