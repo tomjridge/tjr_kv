@@ -1,3 +1,4 @@
+(*
 (** Test the KV store with an LRU frontend *)
 
 open Tjr_monad.With_lwt
@@ -141,11 +142,14 @@ let example =
     return x
   in
 
+(*
   let kvd = {
     fd;
     bt_rt_ref=ref bt_rt;
     blk_alloc_ref;
     pcache_state_ref=ref 
+  }
+*)
 
   (* btree FIXME prefer to just return btree_ops? *)
   let bt_rt_ref = ref bt_rt in
@@ -195,3 +199,4 @@ let example =
   |> from_lwt
 
 let _ = Lwt_main.run (to_lwt example)
+*)

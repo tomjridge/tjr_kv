@@ -7,6 +7,7 @@
 module Kv_intf = Kv_intf
 include Kv_intf
 
+module Intf_v2 = Intf_v2
 
 (** {2 Configuration} *)
 

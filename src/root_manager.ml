@@ -30,3 +30,17 @@ blk_ops:'blk blk_ops ->
 blk_dev_ops:(Blk_id_as_int.blk_id, 'blk, 't) blk_dev_ops ->
 ('roots, 't) root_man
 = make_root_man
+
+open Std_types
+open Intf_v2
+
+let make_root_man_as_obj ~blk_dev_ops : _ generic_root_man = 
+  let rm = make_root_man ~monad_ops ~blk_ops ~blk_dev_ops in
+  let write_roots = rm.write_roots ~sync:true in
+  object 
+    method read_roots=rm.read_roots
+    method write_roots=write_roots
+  end
+
+let _ = make_root_man_as_obj    
+
