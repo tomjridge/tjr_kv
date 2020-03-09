@@ -34,13 +34,24 @@ blk_dev_ops:(Blk_id_as_int.blk_id, 'blk, 't) blk_dev_ops ->
 open Std_types
 open Intf_v2
 
-let make_root_man_as_obj ~blk_dev_ops : _ generic_root_man = 
-  let rm = make_root_man ~monad_ops ~blk_ops ~blk_dev_ops in
-  let write_roots = rm.write_roots ~sync:true in
+let make_root_man_as_obj () : _ generic_root_man = 
+  let blk_dev_ops = ref None in
+  let rm_ref = ref None in
+  let set_blk_dev_ops (x:std_blk_dev_ops) = 
+    blk_dev_ops:=Some x;
+    rm_ref := Some (make_root_man ~monad_ops ~blk_ops ~blk_dev_ops:x)
+  in
+  let check_initialized () = assert(Option.is_some !blk_dev_ops) in
+  let read_roots () = Option.get !rm_ref |> fun x -> x.read_roots () in
+  let write_roots rs = (Option.get !rm_ref) |> fun x -> 
+                      x.write_roots ~sync:true rs
+  in
   object 
-    method read_roots=rm.read_roots
+    method set_blk_dev_ops = set_blk_dev_ops
+    method check_initialized = check_initialized
+    method read_roots=read_roots
     method write_roots=write_roots
   end
 
-let _ = make_root_man_as_obj    
+let _ = make_root_man_as_obj
 

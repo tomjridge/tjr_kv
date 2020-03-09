@@ -5,6 +5,8 @@ open Std_types
 (** {2 Root manager and (uncached) B-tree} *)
 
 class type ['a] generic_root_man = object
+  method set_blk_dev_ops: std_blk_dev_ops -> unit
+  method check_initialized: unit -> unit
   method read_roots: unit -> ('a,t)m
   method write_roots: 'a -> (unit,t)m
 end
@@ -47,6 +49,7 @@ end
 
 (** Messages from pcache to b-tree *)
 type ('k,'v,'t) pc_bt_msg = ('k,'v,blk_id,'t) Msg_pc_bt.pc_bt_msg
+
 class type ['k,'v] q_pc_bt = object
   method enqueue: ('k,'v,t) pc_bt_msg -> (unit,t)m
   method dequeue: unit -> (('k,'v,t) pc_bt_msg,t)m

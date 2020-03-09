@@ -2,7 +2,8 @@
 
 open Tjr_monad.With_lwt
 open Tjr_mem_queue.Memq_intf
-open Kv_intf
+(* open Kv_intf *)
+(* open Intf_v2 *)
 
 (* FIXME this isn't quite correct - we want lwt combined with state-passing of the fun_store *)
 
@@ -76,6 +77,8 @@ end
 include Lwt_mutex_ops
 
 
+(*
+
 (** {2 In-memory message queue for Lwt} *)
 
 (** Type for lwt_queue_ops *)
@@ -137,7 +140,6 @@ end
   end
   let q_lru_pc = {initial_state=Internal2.q_lru_pc;ops=Internal2.q_lru_pc_ops}
 
-
   (** {2 q_pc_bt } *)
 
   type pc_bt_msg' = (k,v,S.blk_id,lwt) Msg_pc_bt.pc_bt_msg
@@ -150,3 +152,8 @@ end
   end
   let q_pc_bt = {initial_state=Internal3.q_pc_bt; ops=Internal3.q_pc_bt_ops}
 end
+*)
+
+let yield () = Lwt.pause ()
+
+let sleep f = Lwt_unix.sleep f

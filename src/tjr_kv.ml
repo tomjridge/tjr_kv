@@ -5,7 +5,7 @@
 (** {2 Main interfaces} *)
 
 module Kv_intf = Kv_intf
-include Kv_intf
+(* include Kv_intf *)
 
 module Intf_v2 = Intf_v2
 
@@ -22,6 +22,22 @@ module Lwt_aux = Lwt_aux
 (** {2 Root manager} *)
 
 module Root_manager = Root_manager
+
+
+(** {2 Btree thread} *)
+
+module Btree_thread = Btree_thread
+
+
+
+(** {2 Pcache thread} *)
+
+module Pcache_thread = Pcache_thread
+
+
+(** {2 Lru} *)
+
+module Lru = Lru
 
 
 (** {2 The key-value store} *)
