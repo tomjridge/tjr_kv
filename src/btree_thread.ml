@@ -6,14 +6,13 @@ open Kv_intf
 open Intf_v2
 open Kv_profilers
 
+type empty = |
 
-(** args: q_pc_bt and map_ops *)
-class type ['k,'v,'ls] args = object
-  method get_q_pc_bt: unit -> ('k,'v)q_pc_bt
-  method get_map_ops: unit -> ('k,'v,r,'ls,t)map_ops_with_ls
-end
-
-let make_btree_thread (type ls) (args:('k,'v,ls)args) = 
+let make_btree_thread (type ls) 
+    ~(q_pc_bt:(_,_)q_pc_bt)
+    ~(map_ops:('k,'v,r,'ls,t)map_ops_with_ls)
+  : < start_btree_thread: unit -> (empty,t)m >
+  = 
   let open (struct
     open Kvop
 
@@ -30,9 +29,7 @@ let make_btree_thread (type ls) (args:('k,'v,ls)args) =
     let _ : unit = Stdlib.at_exit (fun () ->
         Printf.printf "%s, B-tree op count: %d\n" __MODULE__ (!btree_op_count))
 
-    let q_pc_bt = args#get_q_pc_bt ()
-
-    let Map_ops_with_ls.{ find; insert; delete; _ } = args#get_map_ops ()
+    let Map_ops_with_ls.{ find; insert; delete; _ } = map_ops
 
     let bt_sync () = return (Blk_id_as_int.of_int (-1)) (* FIXME *)
     (* return ((failwith "FIXME"):Blk_id_as_int.blk_id) *)

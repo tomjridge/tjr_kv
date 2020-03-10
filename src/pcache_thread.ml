@@ -7,21 +7,14 @@ open Kv_intf
 open Intf_v2
 open Kv_profilers
 
-(** args: kvop_map_ops, pcache_blocks_limit, pcache_ops, q_lru_pc, q_pc_bt *)
-class type ['k,'v,'ls,'kvop_map] args = object
-  method kvop_map_ops : unit ->
-                 ('k, ('k, 'v) Tjr_fs_shared.kvop, 'kvop_map)
-                   Tjr_lib.Tjr_map.map_ops
-  method pcache_blocks_limit : unit -> int
-  method pcache_ops : unit ->
-               ('k, 'v, Tjr_fs_shared.Std_types.blk_id, 'kvop_map,
-                Tjr_fs_shared.Std_types.t)
-               Tjr_pcache.Pcache_intf.pcache_ops
-  method q_lru_pc : unit -> ('k, 'v) Tjr_kv__.Intf_v2.q_lru_pc
-  method q_pc_bt : unit -> ('k, 'v) Tjr_kv__.Intf_v2.q_pc_bt
-end
-
-let make_pcache_thread (type k v ls kvop_map) (args:(k,v,ls,kvop_map)args) : < start_pcache_thread: unit -> (empty,t)m > =
+let make_pcache_thread (type k v ls kvop_map)
+    ~(kvop_map_ops:(k,(k,v)kvop,kvop_map)Tjr_map.map_ops)
+    ~pcache_blocks_limit
+    ~(pcache_ops:(_,_,_,_,_)pcache_ops)
+    ~(q_lru_pc:(_,_)q_lru_pc)
+    ~(q_pc_bt:(_,_)q_pc_bt)
+  : < start_pcache_thread: unit -> (empty,t)m > 
+  =
   let open (struct
 
     type nonrec pcache_ops = (k,v,blk_id,kvop_map,lwt) pcache_ops
@@ -33,17 +26,8 @@ let make_pcache_thread (type k v ls kvop_map) (args:(k,v,ls,kvop_map)args) : < s
     [@@warning "-8"]
     let mark = pcache_profiler.mark
 
-    let q_pc_bt : (k,v)q_pc_bt = args#q_pc_bt ()
-
-    let q_lru_pc : (k,v)q_lru_pc = args#q_lru_pc ()
-
-    let kvop_map_ops : (k,(k,v)kvop,kvop_map) Tjr_map.map_ops = args#kvop_map_ops ()
-
-    let pcache_blocks_limit = args#pcache_blocks_limit ()
-
-    let pcache_ops = args#pcache_ops ()
-
-    (** Now we fill in the missing components: [bt_find, bt_handle_detach].*)
+    (** Now we fill in the missing components: [bt_find,
+       bt_handle_detach].*)
 
     (** NOTE this enqueues a find event on the msg queue, and
         constructs a promise that waits for the result *)
