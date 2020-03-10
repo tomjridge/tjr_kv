@@ -6,3 +6,4 @@ _build/
 /dmap.store
 /src/internal_staging.ml.html
 /btree.store
+/kv.store

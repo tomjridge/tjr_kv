@@ -56,7 +56,7 @@ open Lwt_aux  (* provides various msg queues *)
 open Std_types
 open Kv_intf 
 open Intf_v2
-open Kv_runtime_config
+open Kv_conf_runtime
 (* open Kv_profilers *)
 
 
@@ -101,7 +101,8 @@ module Make(S:S) = struct
   let blk_alloc : (r,t) blk_allocator_ops Lazy.t = lazy (
     let blk_alloc () = 
       assert(Option.is_some !roots);
-      !roots |> Option.get |> fun x -> 
+      !roots |> Option.get |> fun x ->       
+      roots:=Some({x with min_free=B.inc x.min_free});
       return x.min_free
     in
     let blk_free blk_id = return () in
@@ -132,7 +133,7 @@ module Make(S:S) = struct
       let blk_dev_ops = Lazy.force blk_dev_ops in
       let blk_alloc = Lazy.force blk_alloc in
       let x = Btree_.make ~blk_dev_ops ~blk_alloc ~root_ops:with_bt_rt in
-      let module S = (val x) in
+      let module S = (val x) in  (* FIXME this is supposed to be uncached *)
       make_btree_thread ~q_pc_bt ~map_ops:S.map_ops_with_ls)
 
 
@@ -178,7 +179,7 @@ module Make(S:S) = struct
       in
       Pcache_thread.make_pcache_thread 
         ~kvop_map_ops
-        ~pcache_blocks_limit
+        ~pcache_blocks_limit:config.pcache_blocks_limit
         ~pcache_ops
         ~q_lru_pc
         ~q_pc_bt)
@@ -208,7 +209,7 @@ module Make(S:S) = struct
     make_lru args
 
   let _ : unit = lru#set_initial_state 
-      (Lru_.init_state ~max_size:lru_max_size ~evict_count:lru_evict_count)
+      (Lru_.init_state ~max_size:config.lru_max_size ~evict_count:config.lru_evict_count)
 
   let lru_ops = lru#get_lru_ops ()
 

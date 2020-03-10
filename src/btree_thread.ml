@@ -4,14 +4,12 @@ open Tjr_monad.With_lwt
 open Std_types
 open Kv_intf
 open Intf_v2
-open Kv_profilers
-
-type empty = |
+open Kv_conf_profilers
 
 let make_btree_thread (type ls) 
     ~(q_pc_bt:(_,_)q_pc_bt)
     ~(map_ops:('k,'v,r,'ls,t)map_ops_with_ls)
-  : < start_btree_thread: unit -> (empty,t)m >
+  : < start_btree_thread: unit -> (unit,t)m >
   = 
   let open (struct
     open Kvop
@@ -27,7 +25,7 @@ let make_btree_thread (type ls)
     let btree_op_count = ref 0
 
     let _ : unit = Stdlib.at_exit (fun () ->
-        Printf.printf "%s, B-tree op count: %d\n" __MODULE__ (!btree_op_count))
+        Printf.printf "B-tree op count: %d (%s)\n" (!btree_op_count) __FILE__)
 
     let Map_ops_with_ls.{ find; insert; delete; _ } = map_ops
 
@@ -57,9 +55,10 @@ let make_btree_thread (type ls)
     let rec read_and_dispatch () =
       (* from_lwt(yield()) >>= fun () -> *)
       mark d2b_ea; 
-      (* FIXME are we worried about the cost of these dequeues? *)
+      (* FIXME are we worried about the cost of these dequeues? most
+         of the time they will pause *)
       q_pc_bt#dequeue () >>= fun msg ->
-      mark d2b_eb; 
+      mark (-1*d2b_ea); 
       (* from_lwt(sleep bt_thread_delay) >>= fun () ->  (\* FIXME *\) *)
       (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)
       match msg with

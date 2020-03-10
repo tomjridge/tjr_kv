@@ -5,7 +5,7 @@ open Lwt_aux
 open Std_types
 open Kv_intf
 open Intf_v2
-open Kv_profilers
+open Kv_conf_profilers
 
 let make_pcache_thread (type k v ls kvop_map)
     ~(kvop_map_ops:(k,(k,v)kvop,kvop_map)Tjr_map.map_ops)
@@ -13,7 +13,7 @@ let make_pcache_thread (type k v ls kvop_map)
     ~(pcache_ops:(_,_,_,_,_)pcache_ops)
     ~(q_lru_pc:(_,_)q_lru_pc)
     ~(q_pc_bt:(_,_)q_pc_bt)
-  : < start_pcache_thread: unit -> (empty,t)m > 
+  : < start_pcache_thread: unit -> (unit,t)m > 
   =
   let open (struct
 
@@ -55,7 +55,7 @@ let make_pcache_thread (type k v ls kvop_map)
 
     let pcache_op_count = ref 0
     let _ : unit = Stdlib.at_exit (fun () ->
-        Printf.printf "%s, pcache op count: %d\n" __MODULE__ (!pcache_op_count))
+        Printf.printf "pcache op count: %d (%s)\n" (!pcache_op_count) __FILE__)
 
     let pcache_thread ~pcache_ops ~yield ~sleep () = 
       let pcache_ops = 
@@ -128,7 +128,7 @@ let make_pcache_thread (type k v ls kvop_map)
       in
       read_and_dispatch ()
 
-    let start_pcache_thread () : (empty,t)m = Lwt_aux.(pcache_thread ~pcache_ops ~yield ~sleep ())
+    let start_pcache_thread () : (unit,t)m = Lwt_aux.(pcache_thread ~pcache_ops ~yield ~sleep ())
   end)
   in
   object method start_pcache_thread=start_pcache_thread end

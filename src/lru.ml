@@ -5,7 +5,7 @@ open Lwt_aux
 open Std_types
 open Kv_intf
 open Intf_v2
-open Kv_profilers
+open Kv_conf_profilers
 
 module L = Tjr_lru_cache
 

@@ -9,9 +9,11 @@ module Kv_intf = Kv_intf
 
 module Intf_v2 = Intf_v2
 
-(** {2 Configuration} *)
+(** {2 Configuration and profilers} *)
 
-module Kv_runtime_config = Kv_runtime_config
+module Kv_conf_optcomp = Kv_conf_optcomp
+module Kv_conf_runtime = Kv_conf_runtime
+module Kv_conf_profilers = Kv_conf_profilers
 
 
 (** {2 Lwt aux} *)
@@ -45,7 +47,4 @@ module Lru = Lru
 module Kv_store_with_lru = Kv_store_with_lru
 
 
-(** {2 Internal: profilers} *)
-
-module Kv_profilers = Kv_profilers
 
