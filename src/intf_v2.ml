@@ -53,6 +53,7 @@ type ('k,'v,'t) pc_bt_msg = ('k,'v,blk_id,'t) Msg_pc_bt.pc_bt_msg
 class type ['k,'v] q_pc_bt = object
   method enqueue: ('k,'v,t) pc_bt_msg -> (unit,t)m
   method dequeue: unit -> (('k,'v,t) pc_bt_msg,t)m
+  method len: unit -> int
 end
 
 (** NOTE the kvop_map type comes from the Pcache functor
@@ -77,6 +78,7 @@ type ('k,'v,'t) lru_pc_msg = ('k,'v,'t) Msg_lru_pc.lru_pc_msg
 class type ['k,'v] q_lru_pc = object
   method enqueue: ('k,'v,t) lru_pc_msg -> (unit,t)m
   method dequeue: unit -> (('k,'v,t) lru_pc_msg,t)m
+  method len: unit -> int
 end
 
 class type ['k,'v,'mt_state] lru = object

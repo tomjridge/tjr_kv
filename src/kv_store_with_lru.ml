@@ -215,24 +215,20 @@ module Make(S:S) = struct
 end
 
 
-(*
 module Int_int_ex = struct
-
-  type leaf_stream = Tjr_btree_examples.Make_2.Int_int_ex.ls
-
+  (**/**)
   module Internal = struct
-    type k = int
-    let compare = Int_.compare
-    type v = int
-
-    type nonrec leaf_stream = leaf_stream
-    type kvop_map = Tjr_pcache_example.Int_int_ex.kvop_map
-    let kvop_map_ops = Tjr_pcache_example.Int_int_ex.kvop_map_ops
+    open Bin_prot.Std
+    type k = int[@@deriving bin_io]
+    type v = int[@@deriving bin_io]
+    let k_cmp = Int_.compare
+    type r = Std_types.r[@@deriving bin_io]
+    let k_size = 9
+    let v_size = 9
+    let r_size = 9
   end
-
   module Internal2 = Make(Internal)
-
+  (**/**)
   include Internal2
 
 end
-*)

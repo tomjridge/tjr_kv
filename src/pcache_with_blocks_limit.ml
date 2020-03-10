@@ -5,8 +5,7 @@ type ('k,'v,'t) pcache_with_lim_ops = ('k,'v,'t) Tjr_fs_shared.Shared_map_ops.ma
 
 (** NOTE bt_find and bt_handle_detach are named for the particular
    application we envisage: a persistent cache which hands over to a
-   btree *)
-(** 
+   btree 
 
 Construct the PCACHE, which uses the pcache_ops and wraps it in a routine which occasionally executes a B-tree roll-up. 
 
