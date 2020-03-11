@@ -55,7 +55,7 @@ let make_pcache_thread (type k v ls kvop_map)
 
     let pcache_op_count = ref 0
     let _ : unit = Stdlib.at_exit (fun () ->
-        Printf.printf "pcache op count: %d (%s)\n" (!pcache_op_count) __FILE__)
+        Printf.printf "pcache op count: %#d (%s)\n" (!pcache_op_count) __FILE__)
 
     let pcache_thread ~pcache_ops ~yield ~sleep () = 
       let pcache_ops = 
@@ -77,7 +77,8 @@ let make_pcache_thread (type k v ls kvop_map)
             (* let open Tjr_lru_cache in *)
             (* let open Mt_intf in *)
             match (e:v Tjr_lru_cache.Im_intf.entry) with
-            | Insert { value=v; _ } -> 
+            | Insert { value=v; dirty } -> 
+              assert(dirty); (* FIXME? or maybe refine the to_lower msgs *)
               pcache_ops.insert k v >>= fun () ->
               loop es
             | Delete _ -> 
@@ -127,6 +128,11 @@ let make_pcache_thread (type k v ls kvop_map)
           read_and_dispatch ()
       in
       read_and_dispatch ()
+
+    (* adjust yield so that we don't yield at all.. but perhaps this is a bad idea? *)
+    let yield = Lwt.(return ())
+
+    (* NOTE currently pcache doesn't sleep at all *)
 
     let start_pcache_thread () : (unit,t)m = Lwt_aux.(pcache_thread ~pcache_ops ~yield ~sleep ())
   end)

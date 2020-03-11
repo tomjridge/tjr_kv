@@ -25,7 +25,7 @@ let make_btree_thread (type ls)
     let btree_op_count = ref 0
 
     let _ : unit = Stdlib.at_exit (fun () ->
-        Printf.printf "B-tree op count: %d (%s)\n" (!btree_op_count) __FILE__)
+        Printf.printf "B-tree op count: %#d (%s)\n" (!btree_op_count) __FILE__)
 
     let Map_ops_with_ls.{ find; insert; delete; _ } = map_ops
 

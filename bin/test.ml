@@ -25,11 +25,15 @@ let test_thread ~(q_lru_pc:(_,_)q_lru_pc) ~lru_ops =
     | false -> return ()
   in
   let maybe_sleep n =
+    (* we allow the q_lru_pc to grow to this size without sleeping *)
+    let cut_off = 500 in 
     begin
-      let len = q_len () in
-      (n mod dly_its = 0 && len > 500) |> function
+      (n mod dly_its = 0 && q_len () > cut_off) |> function
       | true -> 
-        let delta = rt_config.tst_thrd_dly *. float_of_int (len - 500) in
+        (* this results in somewhat jerky sleeping *)
+        (* let len_sq = let x = q_len () in x*x in *)
+        let len = q_len () - cut_off in
+        let delta = rt_config.tst_thrd_dly *. float_of_int len in
         sleep delta |> from_lwt
       | false -> return ()
     end
@@ -37,7 +41,7 @@ let test_thread ~(q_lru_pc:(_,_)q_lru_pc) ~lru_ops =
   let rec loop n =
     maybe_yield n >>= fun () -> 
     maybe_sleep n >>= fun () -> 
-    let _ : unit = if n mod 1000 = 0 then Printf.printf "Inserting %d\n%!" n in
+    let _ : unit = if n mod 10000 = 0 then Printf.printf "Inserting %#d\n%!" n in
     let mode = Persist_later in (* FIXME *)
     lru_ops.mt_insert mode (i2k n) (i2k(2*n)) >>= fun () ->
     loop (n+1)
