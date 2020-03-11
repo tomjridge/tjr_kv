@@ -12,7 +12,7 @@ module L = Tjr_lru_cache
 (** args: make_multithreaded_lru, q_lru_pc *)
 class type ['k,'v,'mt_state] args = object
   method make_multithreaded_lru: 
-    with_lru:('mt_state, t) with_lru_ops ->
+    with_lru:('mt_state, t) with_state ->
     to_lower:(('k, 'v, t) lru_pc_msg -> (unit, t) m) ->
     ('k, 'v, t)mt_ops
   method q_lru_pc: unit -> ('k,'v)q_lru_pc
@@ -55,13 +55,13 @@ let make_lru (type k v mt_state) (args:(k,v,mt_state)args)
 
     let set_initial_state s = 
       let lru_state = ref s in
-      let with_lru f = 
+      let with_state f = 
         from_lwt (Lwt_mutex.lock lru_lock) >>= fun () ->
-        f ~lru:(!lru_state) ~set_lru:(fun lru ->
+        f ~state:(!lru_state) ~set_state:(fun lru ->
             lru_state:=lru; return ()) >>= fun a ->
         (Lwt_mutex.unlock lru_lock; return a)
       in
-      with_lru_ref := Some (Mt_intf.Mt_state_type.{ with_lru })
+      with_lru_ref := Some { with_state }
 
 
     let check_initialized () = assert(Option.is_some !with_lru_ref)

@@ -187,7 +187,7 @@ module Make(S:S) = struct
 
   (** {2 LRU cache} *)
 
-  module Lru_ = Tjr_lru_cache.Make(struct
+  module Lru_ = Tjr_lru_cache.Make.Make(struct
       type k = S.k
       let compare = S.k_cmp
       type v = S.v

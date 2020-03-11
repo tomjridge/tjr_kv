@@ -76,7 +76,7 @@ let make_pcache_thread (type k v ls kvop_map)
           | (k,e)::es -> 
             (* let open Tjr_lru_cache in *)
             (* let open Mt_intf in *)
-            match (e:v Tjr_lru_cache.entry) with
+            match (e:v Tjr_lru_cache.Im_intf.entry) with
             | Insert { value=v; _ } -> 
               pcache_ops.insert k v >>= fun () ->
               loop es
