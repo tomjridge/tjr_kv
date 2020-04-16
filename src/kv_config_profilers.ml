@@ -1,4 +1,4 @@
-[%%import "kv_conf_optcomp.ml"]
+[%%import "kv_config_optcomp.ml"]
 
 module Internal : sig
   val lru_profiler : int profiler

@@ -7,14 +7,14 @@ open Tjr_kv
 open Intf_v2
 open Lwt_aux
 
-let rt_config = Kv_conf_runtime.config
+let rt_config = Lazy.force Kv_config_runtime.config
 
 module KVX = Kv_store_with_lru.Int_int_ex
 
 let i2k i = i
 let i2v i = i
 
-let Kv_conf_runtime.{ tst_thrd_dly_its=dly_its; tst_thrd_dly; tst_thrd_yld_its; _ } = rt_config
+let Kv_config_runtime.{ tst_thrd_dly_its=dly_its; tst_thrd_dly; tst_thrd_yld_its; _ } = rt_config
 
 (** Test thread runs a loop, inserting (i,2*i) at step i *)
 let test_thread ~(q_lru_pc:(_,_)q_lru_pc) ~lru_ops = 

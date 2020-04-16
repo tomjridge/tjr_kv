@@ -56,7 +56,7 @@ open Lwt_aux  (* provides various msg queues *)
 open Std_types
 open Kv_intf 
 open Intf_v2
-open Kv_conf_runtime
+open Kv_config_runtime
 (* open Kv_profilers *)
 
 
@@ -177,6 +177,7 @@ module Make(S:S) = struct
           ~blk_alloc:(Lazy.force blk_alloc).blk_alloc 
           ~with_pcache 
       in
+      let config = Lazy.force config in
       Pcache_thread.make_pcache_thread 
         ~kvop_map_ops
         ~pcache_blocks_limit:config.pcache_blocks_limit
@@ -207,6 +208,8 @@ module Make(S:S) = struct
       end
     in
     make_lru args
+
+  let config = Lazy.force config
 
   let _ : unit = lru#set_initial_state 
       (Lru_.init_state ~max_size:config.lru_max_size ~evict_count:config.lru_evict_count)

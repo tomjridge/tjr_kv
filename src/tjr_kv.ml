@@ -11,9 +11,9 @@ module Intf_v2 = Intf_v2
 
 (** {2 Configuration and profilers} *)
 
-module Kv_conf_optcomp = Kv_conf_optcomp
-module Kv_conf_runtime = Kv_conf_runtime
-module Kv_conf_profilers = Kv_conf_profilers
+module Kv_config_optcomp = Kv_config_optcomp
+module Kv_config_runtime = Kv_config_runtime
+module Kv_config_profilers = Kv_config_profilers
 
 
 (** {2 Lwt aux} *)

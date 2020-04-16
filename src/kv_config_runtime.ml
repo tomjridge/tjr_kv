@@ -29,7 +29,7 @@ end
 
 include Tjr_config.Make(S)
 
-[%%import "kv_conf_optcomp.ml"]
+[%%import "kv_config_optcomp.ml"]
 [%%if PROFILING_ENABLED]
 let _ : unit = Printf.printf "%s: profiling enabled\n" __FILE__
 let profiling_enabled = true

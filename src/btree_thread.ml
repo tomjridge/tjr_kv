@@ -4,7 +4,7 @@ open Tjr_monad.With_lwt
 open Std_types
 open Kv_intf
 open Intf_v2
-open Kv_conf_profilers
+open Kv_config_profilers
 
 let make_btree_thread (type ls) 
     ~(q_pc_bt:(_,_)q_pc_bt)

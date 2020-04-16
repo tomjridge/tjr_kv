@@ -6,7 +6,7 @@
   -open Tjr_pcache -open Tjr_pcache.Pcache_intf -open Tjr_pcache_example 
   -open Tjr_mem_queue -open Tjr_lru_cache -open Tjr_lru_cache.Mt_intf  ))  
   (preprocess (pps ppx_deriving_yojson ppx_jane ))
-  (preprocessor_deps (file "kv_conf_optcomp.ml"))
+  (preprocessor_deps (file "kv_config_optcomp.ml"))
   (libraries tjr_btree tjr_btree_examples tjr_pcache tjr_pcache_example tjr_lru_cache tjr_mem_queue ppx_jane))
 
 (include_subdirs unqualified)
