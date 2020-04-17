@@ -1,6 +1,3 @@
-TMP_DOC_DIR:=/tmp/tjr_kv
-scratch:=/tmp/l/github/scratch
-
 default: all
 
 -include Makefile.ocaml
