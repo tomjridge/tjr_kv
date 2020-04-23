@@ -32,7 +32,7 @@ blk_dev_ops:(Blk_id_as_int.blk_id, 'blk, 't) blk_dev_ops ->
 = make_root_man
 
 open Std_types
-open Intf_v2
+open Kv_intf_v2
 
 let make_root_man_as_obj () : _ generic_root_man = 
   let blk_dev_ops = ref None in

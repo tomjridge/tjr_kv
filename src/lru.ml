@@ -4,7 +4,7 @@ open Tjr_monad.With_lwt
 open Lwt_aux
 open Std_types
 open Kv_intf
-open Intf_v2
+open Kv_intf_v2
 open Kv_config_profilers
 
 module L = Tjr_lru_cache

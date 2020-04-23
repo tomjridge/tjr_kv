@@ -1,90 +1,103 @@
-(** A KV store with an LRU cache frontend. *)
+(** Version using {!Kv_intf_v3} interfaces *)
 
-
-(** {2 Architecture}
-
-{%html: 
-
-<img src="https://docs.google.com/drawings/d/e/2PACX-1vTIXhyNa7dovQYXuJXBMwPQZU99-x_tRdTIH3SkMUDyPwbL31zExWXauT2hO-eRIUcnGP3RVHiSHrjt/pub?w=557&amp;h=428">
-
-%}
-
-
-We construct the following...
-
-{3 LRU}
-
-  - q_lru_pc, a msg queue from lru to pcache
-  - Lru and lru_state
-  - lru_thrd, which takes messages from lru.to_lower to enqueue on
-    q_lru_pc; the lru interface itself can be used by many threads safely
-
-
-
-
-{3 Pcache }
-
-  - q_pc_bt, a msg queue from pcache to B-tree
-  - Pcache and pcache_state
-  - pc_thrd, which takes msgs from q_pc_btree and executes against pcache; also performs detach occasionally and enqueue messages to q_pc_bt
-
-
-{3 B-tree}
-
-  - B-tree
-  - bt_thrd listening to q_pc_btree; also includes root manager functionality
-
-*)
-
-(* old doc?
-
-{3 Functional store thread}
-
-  - this maintains the "global" state, including locks etc
-  - the queues are kept separate since they are implemented using
-    mutation anyway FIXME perhaps prefer a "functional" version using
-    the functional store
-  - includes: lru_state; pcache_state; btree_state (a root pointer?)
-  - also includes an Lwt_mvar for communication and implementation of
-    with_state (?FIXME still true?)
-*)
+(* NOTE this code is mostly copied from kv_store_with_lru *)
+[@@@warning "-33"]
 
 open Tjr_monad.With_lwt
 open Lwt_aux  (* provides various msg queues *)
 open Std_types
 open Kv_intf 
-open Kv_intf_v2
-(* open Kv_config_runtime *)
-let runtime_config = Kv_config_runtime.config
-(* open Kv_profilers *)
+open Kv_intf_v3
 
 
-module type S = sig
-  type k[@@deriving bin_io]
-  type v[@@deriving bin_io]
-  val k_cmp: k -> k -> int
-  type r = Std_types.r[@@deriving bin_io]
+module type S = Kv_store_with_lru.S 
 
-  val k_size: int
-  val v_size: int
-  val r_size: int
-end
-
+(*
 module Make(S:S) = struct
   open S
 
+
   (** {2 Message queues} *)
                   
-  let q_lru_pc : (k,v) q_lru_pc = Tjr_mem_queue.With_lwt.make_as_object ()  
-  let q_pc_bt : (k,v) q_pc_bt = Tjr_mem_queue.With_lwt.make_as_object ()
+  let q_lru_pc : (k,v) Kv_intf_v2.q_lru_pc = Tjr_mem_queue.With_lwt.make_as_object ()  
+  let q_pc_bt : (k,v) Kv_intf_v2.q_pc_bt = Tjr_mem_queue.With_lwt.make_as_object ()
 
 
   (** {2 Blk_dev_ops ref} *)
 
   let blk_dev_ops_ref: (blk_id,blk,t) blk_dev_ops option ref = ref None
-  let blk_dev_ops = lazy(
+
+  let set_blk_dev_ops blk_dev_ops = blk_dev_ops_ref := Some blk_dev_ops
+
+  let get_blk_dev_ops () = 
     assert(Option.is_some !blk_dev_ops_ref);
-    !blk_dev_ops_ref |> Option.get)
+    Option.get !blk_dev_ops_ref
+
+
+  module Make_root_blk_ops(S:sig type rb[@@deriving bin_io] end) = struct
+    include S
+
+    let write_rb ~blk_id rb =
+      let blk_dev_ops = get_blk_dev_ops () in
+      (* FIXME have a single buf_create, specialized to std_type and buf_sz *)
+      let buf = buf_create () in
+      bin_write_rb buf ~pos:0 rb |> fun _ ->
+      blk_dev_ops.write ~blk_id ~blk:buf
+
+    let read_rb: blk_id:blk_id -> (rb,t)m = fun ~blk_id ->
+      let blk_dev_ops = get_blk_dev_ops () in
+      blk_dev_ops.read ~blk_id >>= fun blk ->
+      bin_read_rb blk ~pos_ref:(ref 0) |> fun rb ->
+      return rb
+  end
+
+  module X = Make_root_blk_ops(struct type rb = rt_blk[@@deriving bin_io] end)
+
+
+
+  (** {2 The root block, where roots (apart from freelist) are stored} *)
+  
+  let r0 = ref None
+
+  let set_rt blk_id = r0:=Some blk_id
+
+  let get_rt () = 
+    assert(Option.is_some !r0);
+    Option.get !r0
+
+
+  let rb_ref = ref None
+
+  let set_rt_blk rb = rb_ref:=Some rb
+
+  let get_rb () = 
+    assert(Option.is_some !rb_ref);
+    Option.get !rb_ref
+
+  let sync_rt_blk_from_disk () =
+    get_rt () |> fun blk_id -> 
+    X.read_rb ~blk_id >>= fun rb ->
+    rb_ref:=Some rb; return ()
+
+  let sync_rt_blk_to_disk () =
+    get_rt () |> fun blk_id -> 
+    X.write_rb ~blk_id (get_rb())
+      
+
+
+  (** {2 The freelist} *)
+
+
+type freelist_rt_blk = {
+  min_free:blk_id;
+} [@@deriving bin_io]
+  
+
+  
+    
+    
+    
+    
 
 
   (** {2 Root manager} *)
@@ -215,23 +228,12 @@ module Make(S:S) = struct
 
   let lru_ops = lru#get_lru_ops ()
 
-end
 
-
-module Int_int_ex = struct
-  (**/**)
-  module Internal = struct
-    open Bin_prot.Std
-    type k = int[@@deriving bin_io]
-    type v = int[@@deriving bin_io]
-    let k_cmp = Int_.compare
-    type r = Std_types.r[@@deriving bin_io]
-    let k_size = 9
-    let v_size = 9
-    let r_size = 9
-  end
-  module Internal2 = Make(Internal)
-  (**/**)
-  include Internal2
+  let store : (k,v,_) store =
+    let module X = Kv_store_with_lru.Make(S) in
+    let set_blk_dev_ops blk_dev_ops = X.blk_dev_ops:=
+    
+ failwith ""
 
 end
+*)

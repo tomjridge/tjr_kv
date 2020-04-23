@@ -4,7 +4,7 @@ open Tjr_monad.With_lwt
 let file_ops = lwt_file_ops
 
 open Tjr_kv
-open Intf_v2
+open Kv_intf_v2
 open Lwt_aux
 
 let rt_config = Lazy.force Kv_config_runtime.config

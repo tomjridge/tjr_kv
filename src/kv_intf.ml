@@ -86,6 +86,8 @@ module Syncable_map = struct
       - ksync to sync a particular key
       - ks_sync to sync a set of keys
 
+FIXME shouldn't batch use kvop?
+
   *)
   type ('k,'v,'ptr,'t) syncable_map = {
     find: 'k -> ('v option,'t)m;
@@ -104,7 +106,11 @@ module Syncable_map = struct
   include Mt_intf.Persist_mode
   
   (** Extended version; includes a "persist mode" (ie "now" or
-     "later") and the sync operations *)
+     "later") and the sync operations 
+
+FIXME shouldn't batch use kvop?
+
+*)
   type ('k,'v,'ptr,'t) syncable_map_with_pmode = {
     find: 'k -> ('v option,'t)m;
     insert: persist_mode -> 'k -> 'v -> (unit,'t)m;
