@@ -71,6 +71,7 @@ Simplified interface:
 
 (** See {!Kv_store_with_lru} for more details *)
 
+
 (** {2 Main interfaces} *)
 
 module Kv_intf = Kv_intf
@@ -120,3 +121,19 @@ module Kv_store_with_lru = Kv_store_with_lru
 
 
 
+(** {2 Further notes} *)
+
+(**
+
+{3 Combining B-tree and pcache roots in a single block}
+
+One option when syncing the btree+pcache combination would be to write
+   the pcache roots to disk, and then (in another block) write the
+   B-tree root. This is fine, but if a crash occurs inbetween, we have
+   to recover (which isn't difficult, but still adds complexity). As
+   an alternative, we can write the btree and the pcache roots into
+   the same block atomically. This means that we don't have to worry
+   about recovering from a crash (this approach is crash safe by
+   design).
+
+*)
