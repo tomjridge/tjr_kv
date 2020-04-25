@@ -3,97 +3,92 @@
 
 NOTE the class types are not rendered well with odoc.
 
-{%html:
+{[
+  class type ['a] mrshlr = object
+    method to_blk: 'a -> blk
+    method of_blk: blk -> 'a
+  end
 
+  class type ['a] set_once = object
+    method set: 'a -> unit
+    method get: unit -> 'a
+    method is_set: bool
+  end
 
-<div class="highlight" style="background: #f8f8f8"><pre style="line-height: 125%"><span></span>  <span style="color: #008000; font-weight: bold">class</span> <span style="color: #008000; font-weight: bold">type</span> <span style="color: #666666">[</span><span style="color: #008000; font-weight: bold">&#39;</span>a<span style="color: #666666">]</span> mrshlr <span style="color: #666666">=</span> <span style="color: #008000; font-weight: bold">object</span>
-    <span style="color: #008000; font-weight: bold">method</span> to_blk<span style="color: #666666">:</span> <span style="color: #008000; font-weight: bold">&#39;</span>a <span style="color: #666666">-&gt;</span> blk
-    <span style="color: #008000; font-weight: bold">method</span> of_blk<span style="color: #666666">:</span> blk <span style="color: #666666">-&gt;</span> <span style="color: #008000; font-weight: bold">&#39;</span>a
-  <span style="color: #008000; font-weight: bold">end</span>
+  class type ['a] mutable_ = object
+    method set: 'a -> unit
+    method get: unit -> 'a
+    method is_set: bool
+  end
 
-  <span style="color: #008000; font-weight: bold">class</span> <span style="color: #008000; font-weight: bold">type</span> <span style="color: #666666">[</span><span style="color: #008000; font-weight: bold">&#39;</span>a<span style="color: #666666">]</span> set_once <span style="color: #666666">=</span> <span style="color: #008000; font-weight: bold">object</span>
-    <span style="color: #008000; font-weight: bold">method</span> set<span style="color: #666666">:</span> <span style="color: #008000; font-weight: bold">&#39;</span>a <span style="color: #666666">-&gt;</span> <span style="color: #B00040">unit</span>
-    <span style="color: #008000; font-weight: bold">method</span> get<span style="color: #666666">:</span> <span style="color: #B00040">unit</span> <span style="color: #666666">-&gt;</span> <span style="color: #008000; font-weight: bold">&#39;</span>a
-    <span style="color: #008000; font-weight: bold">method</span> is_set<span style="color: #666666">:</span> <span style="color: #B00040">bool</span>
-  <span style="color: #008000; font-weight: bold">end</span>
+  (** This is a container for a type 'a that can be stored in a single
+     block. The initialized method checks that all the state parts of
+     a component are initialized; use with assert *)
+  class type ['a] on_disk_block = object
+    val blk_dev_ops    : (blk_id,blk,t)blk_dev_ops set_once
+    val blk_id         : blk_id set_once
+    val contents       : 'a mutable_
+    val marshaller     : 'a mrshlr set_once
+    method sync_to_disk   : unit -> (unit,t)m
+    method sync_from_disk : unit -> (unit,t)m
+    method is_initialized : bool
+  end
 
-  <span style="color: #008000; font-weight: bold">class</span> <span style="color: #008000; font-weight: bold">type</span> <span style="color: #666666">[</span><span style="color: #008000; font-weight: bold">&#39;</span>a<span style="color: #666666">]</span> mutable_ <span style="color: #666666">=</span> <span style="color: #008000; font-weight: bold">object</span>
-    <span style="color: #008000; font-weight: bold">method</span> set<span style="color: #666666">:</span> <span style="color: #008000; font-weight: bold">&#39;</span>a <span style="color: #666666">-&gt;</span> <span style="color: #B00040">unit</span>
-    <span style="color: #008000; font-weight: bold">method</span> get<span style="color: #666666">:</span> <span style="color: #B00040">unit</span> <span style="color: #666666">-&gt;</span> <span style="color: #008000; font-weight: bold">&#39;</span>a
-    <span style="color: #008000; font-weight: bold">method</span> is_set<span style="color: #666666">:</span> <span style="color: #B00040">bool</span>
-  <span style="color: #008000; font-weight: bold">end</span>
+  class type ['fl] freelist = object
+    inherit ['fl] on_disk_block
+    method blk_allocator: (r,t)blk_allocator_ops
+  end
 
-  <span style="color: #408080; font-style: italic">(** This is a container for a type &#39;a that can be stored in a single</span>
-<span style="color: #408080; font-style: italic">     block. The initialized method checks that all the state parts of</span>
-<span style="color: #408080; font-style: italic">     a component are initialized; use with assert *)</span>
-  <span style="color: #008000; font-weight: bold">class</span> <span style="color: #008000; font-weight: bold">type</span> <span style="color: #666666">[</span><span style="color: #008000; font-weight: bold">&#39;</span>a<span style="color: #666666">]</span> on_disk_block <span style="color: #666666">=</span> <span style="color: #008000; font-weight: bold">object</span>
-    <span style="color: #008000; font-weight: bold">val</span> blk_dev_ops    <span style="color: #666666">:</span> <span style="color: #666666">(</span>blk_id<span style="color: #666666">,</span>blk<span style="color: #666666">,</span>t<span style="color: #666666">)</span>blk_dev_ops set_once
-    <span style="color: #008000; font-weight: bold">val</span> blk_id         <span style="color: #666666">:</span> blk_id set_once
-    <span style="color: #008000; font-weight: bold">val</span> contents       <span style="color: #666666">:</span> <span style="color: #008000; font-weight: bold">&#39;</span>a mutable_
-    <span style="color: #008000; font-weight: bold">val</span> marshaller     <span style="color: #666666">:</span> <span style="color: #008000; font-weight: bold">&#39;</span>a mrshlr set_once
-    <span style="color: #008000; font-weight: bold">method</span> sync_to_disk   <span style="color: #666666">:</span> <span style="color: #B00040">unit</span> <span style="color: #666666">-&gt;</span> <span style="color: #666666">(</span><span style="color: #B00040">unit</span><span style="color: #666666">,</span>t<span style="color: #666666">)</span>m
-    <span style="color: #008000; font-weight: bold">method</span> sync_from_disk <span style="color: #666666">:</span> <span style="color: #B00040">unit</span> <span style="color: #666666">-&gt;</span> <span style="color: #666666">(</span><span style="color: #B00040">unit</span><span style="color: #666666">,</span>t<span style="color: #666666">)</span>m
-    <span style="color: #008000; font-weight: bold">method</span> is_initialized <span style="color: #666666">:</span> <span style="color: #B00040">bool</span>
-  <span style="color: #008000; font-weight: bold">end</span>
+  type t1 = { 
+    mutable bt_rt:blk_id;
+    mutable pc_hd:blk_id; 
+    mutable pc_tl:blk_id 
+  }[@@deriving bin_io]
 
-  <span style="color: #008000; font-weight: bold">class</span> <span style="color: #008000; font-weight: bold">type</span> <span style="color: #666666">[</span><span style="color: #008000; font-weight: bold">&#39;</span>fl<span style="color: #666666">]</span> freelist <span style="color: #666666">=</span> <span style="color: #008000; font-weight: bold">object</span>
-    <span style="color: #008000; font-weight: bold">inherit</span> <span style="color: #666666">[</span><span style="color: #008000; font-weight: bold">&#39;</span>fl<span style="color: #666666">]</span> on_disk_block
-    <span style="color: #008000; font-weight: bold">method</span> blk_allocator<span style="color: #666666">:</span> <span style="color: #666666">(</span>r<span style="color: #666666">,</span>t<span style="color: #666666">)</span>blk_allocator_ops
-  <span style="color: #008000; font-weight: bold">end</span>
+  class type root_man = object
+    inherit [t1] on_disk_block
+  end
 
-  <span style="color: #008000; font-weight: bold">type</span> t1 <span style="color: #666666">=</span> <span style="color: #666666">{</span> 
-    <span style="color: #008000; font-weight: bold">mutable</span> bt_rt<span style="color: #666666">:</span>blk_id<span style="color: #666666">;</span>
-    <span style="color: #008000; font-weight: bold">mutable</span> pc_hd<span style="color: #666666">:</span>blk_id<span style="color: #666666">;</span> 
-    <span style="color: #008000; font-weight: bold">mutable</span> pc_tl<span style="color: #666666">:</span>blk_id 
-  <span style="color: #666666">}[@@</span>deriving bin_io<span style="color: #666666">]</span>
+  (* we expect that, once setup, the threads run forever; other
+     applications may need to shutdown threads instead. *) 
+  class type btree = object
+    method blk_dev_ops    : (blk_id,blk,t)blk_dev_ops set_once
+    method blk_id         : blk_id mutable_ (* root of the btree *)
+    method thread         : < start_thread: unit -> (unit,t)m >
+    method btree_ops      : unit -> ('k,'v,blk_id,t) Kv_intf.Btree_ops.btree_ops
+    method is_initialized : bool
 
-  <span style="color: #008000; font-weight: bold">class</span> <span style="color: #008000; font-weight: bold">type</span> root_man <span style="color: #666666">=</span> <span style="color: #008000; font-weight: bold">object</span>
-    <span style="color: #008000; font-weight: bold">inherit</span> <span style="color: #666666">[</span>t1<span style="color: #666666">]</span> on_disk_block
-  <span style="color: #008000; font-weight: bold">end</span>
+    (** Flush the write back cache, after merging a prefix of the pcache *)
+    method flush_cache    : unit -> (unit,t)m
+  end
 
-  <span style="color: #408080; font-style: italic">(* we expect that, once setup, the threads run forever; other</span>
-<span style="color: #408080; font-style: italic">     applications may need to shutdown threads instead. *)</span> 
-  <span style="color: #008000; font-weight: bold">class</span> <span style="color: #008000; font-weight: bold">type</span> btree <span style="color: #666666">=</span> <span style="color: #008000; font-weight: bold">object</span>
-    <span style="color: #008000; font-weight: bold">method</span> blk_dev_ops    <span style="color: #666666">:</span> <span style="color: #666666">(</span>blk_id<span style="color: #666666">,</span>blk<span style="color: #666666">,</span>t<span style="color: #666666">)</span>blk_dev_ops set_once
-    <span style="color: #008000; font-weight: bold">method</span> blk_id         <span style="color: #666666">:</span> blk_id mutable_ <span style="color: #408080; font-style: italic">(* root of the btree *)</span>
-    <span style="color: #008000; font-weight: bold">method</span> thread         <span style="color: #666666">:</span> <span style="color: #666666">&lt;</span> start_thread<span style="color: #666666">:</span> <span style="color: #B00040">unit</span> <span style="color: #666666">-&gt;</span> <span style="color: #666666">(</span><span style="color: #B00040">unit</span><span style="color: #666666">,</span>t<span style="color: #666666">)</span>m <span style="color: #666666">&gt;</span>
-    <span style="color: #008000; font-weight: bold">method</span> btree_ops      <span style="color: #666666">:</span> <span style="color: #B00040">unit</span> <span style="color: #666666">-&gt;</span> <span style="color: #666666">(</span><span style="color: #008000; font-weight: bold">&#39;</span>k<span style="color: #666666">,</span><span style="color: #008000; font-weight: bold">&#39;</span>v<span style="color: #666666">,</span>blk_id<span style="color: #666666">,</span>t<span style="color: #666666">)</span> <span style="color: #0000FF; font-weight: bold">Kv_intf</span>.<span style="color: #0000FF; font-weight: bold">Btree_ops</span>.btree_ops
-    <span style="color: #008000; font-weight: bold">method</span> is_initialized <span style="color: #666666">:</span> <span style="color: #B00040">bool</span>
+  class type ['kvop_map] pcache = object
+    method blk_dev_ops    : (blk_id,blk,t)blk_dev_ops set_once
+    method pcache_state   : (r,'kvop_map) Tjr_pcache.Pcache_state.pcache_state mutable_
+    method thread         : < start_thread: unit -> (unit,t)m >
+    method sync_to_disk   : unit -> (unit,t)m
+    method sync_from_disk : hd:blk_id -> tl:blk_id -> (unit,t)m
+    method is_initialized : bool
+  end
 
-    <span style="color: #408080; font-style: italic">(** Flush the write back cache, after merging a prefix of the pcache *)</span>
-    <span style="color: #008000; font-weight: bold">method</span> flush_cache    <span style="color: #666666">:</span> <span style="color: #B00040">unit</span> <span style="color: #666666">-&gt;</span> <span style="color: #666666">(</span><span style="color: #B00040">unit</span><span style="color: #666666">,</span>t<span style="color: #666666">)</span>m
-  <span style="color: #008000; font-weight: bold">end</span>
-
-  <span style="color: #008000; font-weight: bold">class</span> <span style="color: #008000; font-weight: bold">type</span> <span style="color: #666666">[</span><span style="color: #008000; font-weight: bold">&#39;</span>kvop_map<span style="color: #666666">]</span> pcache <span style="color: #666666">=</span> <span style="color: #008000; font-weight: bold">object</span>
-    <span style="color: #008000; font-weight: bold">method</span> blk_dev_ops    <span style="color: #666666">:</span> <span style="color: #666666">(</span>blk_id<span style="color: #666666">,</span>blk<span style="color: #666666">,</span>t<span style="color: #666666">)</span>blk_dev_ops set_once
-    <span style="color: #008000; font-weight: bold">method</span> pcache_state   <span style="color: #666666">:</span> <span style="color: #666666">(</span>r<span style="color: #666666">,</span><span style="color: #008000; font-weight: bold">&#39;</span>kvop_map<span style="color: #666666">)</span> <span style="color: #0000FF; font-weight: bold">Tjr_pcache</span>.<span style="color: #0000FF; font-weight: bold">Pcache_state</span>.pcache_state mutable_
-    <span style="color: #008000; font-weight: bold">method</span> thread         <span style="color: #666666">:</span> <span style="color: #666666">&lt;</span> start_thread<span style="color: #666666">:</span> <span style="color: #B00040">unit</span> <span style="color: #666666">-&gt;</span> <span style="color: #666666">(</span><span style="color: #B00040">unit</span><span style="color: #666666">,</span>t<span style="color: #666666">)</span>m <span style="color: #666666">&gt;</span>
-    <span style="color: #008000; font-weight: bold">method</span> sync_to_disk   <span style="color: #666666">:</span> <span style="color: #B00040">unit</span> <span style="color: #666666">-&gt;</span> <span style="color: #666666">(</span><span style="color: #B00040">unit</span><span style="color: #666666">,</span>t<span style="color: #666666">)</span>m
-    <span style="color: #008000; font-weight: bold">method</span> sync_from_disk <span style="color: #666666">:</span> hd<span style="color: #666666">:</span>blk_id <span style="color: #666666">-&gt;</span> tl<span style="color: #666666">:</span>blk_id <span style="color: #666666">-&gt;</span> <span style="color: #666666">(</span><span style="color: #B00040">unit</span><span style="color: #666666">,</span>t<span style="color: #666666">)</span>m
-    <span style="color: #008000; font-weight: bold">method</span> is_initialized <span style="color: #666666">:</span> <span style="color: #B00040">bool</span>
-  <span style="color: #008000; font-weight: bold">end</span>
-
-  <span style="color: #008000; font-weight: bold">class</span> <span style="color: #008000; font-weight: bold">type</span> <span style="color: #666666">[</span><span style="color: #008000; font-weight: bold">&#39;</span>k<span style="color: #666666">,</span><span style="color: #008000; font-weight: bold">&#39;</span>v<span style="color: #666666">,</span><span style="color: #008000; font-weight: bold">&#39;</span>mt_state<span style="color: #666666">]</span> lru <span style="color: #666666">=</span> <span style="color: #008000; font-weight: bold">object</span>
-    <span style="color: #008000; font-weight: bold">method</span> get_lru_state<span style="color: #666666">:</span> <span style="color: #008000; font-weight: bold">&#39;</span>mt_state mutable_
-    <span style="color: #008000; font-weight: bold">method</span> lru_ops<span style="color: #666666">:</span> <span style="color: #B00040">unit</span> <span style="color: #666666">-&gt;</span> <span style="color: #666666">(</span><span style="color: #008000; font-weight: bold">&#39;</span>k<span style="color: #666666">,</span><span style="color: #008000; font-weight: bold">&#39;</span>v<span style="color: #666666">,</span>t<span style="color: #666666">)</span>mt_ops
-  <span style="color: #008000; font-weight: bold">end</span>
+  class type ['k,'v,'mt_state] lru = object
+    method get_lru_state: 'mt_state mutable_
+    method lru_ops: unit -> ('k,'v,t)mt_ops
+  end
   
-  <span style="color: #408080; font-style: italic">(** A collection of all the stateful components *)</span>
-  <span style="color: #008000; font-weight: bold">class</span> <span style="color: #008000; font-weight: bold">type</span> <span style="color: #666666">[</span><span style="color: #008000; font-weight: bold">&#39;</span>k<span style="color: #666666">,</span><span style="color: #008000; font-weight: bold">&#39;</span>v<span style="color: #666666">,</span><span style="color: #008000; font-weight: bold">&#39;</span>fl<span style="color: #666666">,</span><span style="color: #008000; font-weight: bold">&#39;</span>kvop_map<span style="color: #666666">,</span><span style="color: #008000; font-weight: bold">&#39;</span>mt_state<span style="color: #666666">]</span> kv_store <span style="color: #666666">=</span> <span style="color: #008000; font-weight: bold">object</span>
-    <span style="color: #008000; font-weight: bold">method</span> root_man <span style="color: #666666">:</span> root_man 
-    <span style="color: #008000; font-weight: bold">method</span> btree    <span style="color: #666666">:</span> btree
-    <span style="color: #008000; font-weight: bold">method</span> q_pc_bt  <span style="color: #666666">:</span> <span style="color: #666666">(</span><span style="color: #008000; font-weight: bold">&#39;</span>k<span style="color: #666666">,</span><span style="color: #008000; font-weight: bold">&#39;</span>v<span style="color: #666666">)</span> <span style="color: #0000FF; font-weight: bold">Kv_intf_v2</span>.q_pc_bt
-    <span style="color: #008000; font-weight: bold">method</span> pcache   <span style="color: #666666">:</span> <span style="color: #008000; font-weight: bold">&#39;</span>kvop_map pcache
-    <span style="color: #008000; font-weight: bold">method</span> q_lru_pc <span style="color: #666666">:</span> <span style="color: #666666">(</span><span style="color: #008000; font-weight: bold">&#39;</span>k<span style="color: #666666">,</span><span style="color: #008000; font-weight: bold">&#39;</span>v<span style="color: #666666">)</span> <span style="color: #0000FF; font-weight: bold">Kv_intf_v2</span>.q_lru_pc
-    <span style="color: #008000; font-weight: bold">method</span> lru      <span style="color: #666666">:</span> <span style="color: #666666">(</span><span style="color: #008000; font-weight: bold">&#39;</span>k<span style="color: #666666">,</span><span style="color: #008000; font-weight: bold">&#39;</span>v<span style="color: #666666">,</span><span style="color: #008000; font-weight: bold">&#39;</span>mt_state<span style="color: #666666">)</span> lru
+  (** A collection of all the stateful components *)
+  class type ['k,'v,'fl,'kvop_map,'mt_state] kv_store = object
+    method root_man : root_man 
+    method btree    : btree
+    method q_pc_bt  : ('k,'v) Kv_intf_v2.q_pc_bt
+    method pcache   : 'kvop_map pcache
+    method q_lru_pc : ('k,'v) Kv_intf_v2.q_lru_pc
+    method lru      : ('k,'v,'mt_state) lru
 
-    <span style="color: #408080; font-style: italic">(** Checks all components are initialized *)</span>
-    <span style="color: #008000; font-weight: bold">method</span> is_initialized <span style="color: #666666">:</span> <span style="color: #B00040">bool</span>
-  <span style="color: #008000; font-weight: bold">end</span>
-</pre></div>
-
-
-%}
+    (** Checks all components are initialized *)
+    method is_initialized : bool
+  end
+]}
 
  *)
 
