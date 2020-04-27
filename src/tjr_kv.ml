@@ -79,7 +79,7 @@ module Kv_intf = Kv_intf
 
 module Kv_intf_v2 = Kv_intf_v2
 
-module Kv_intf_v3 = Kv_intf_v3
+(* module Kv_intf_v3 = Kv_intf_v3 *)
 
 
 (** {2 Configuration and profilers} *)

@@ -50,37 +50,28 @@ let test_thread ~(q_lru_pc:(_,_)q_lru_pc) ~lru_ops =
     method start_test_thread () : (unit,t)m = loop 0
   end
 
-let [b1;b2;b3] = List.map B.of_int [1;2;3] [@@warning "-8"]
-
 (** Start pcache, bt and test thread; wait 2s; then print some stats *)
 let example = 
   lwt_file_ops.open_ ~fn:rt_config.filename ~create:true ~init:true >>= fun fd ->
   let blk_dev_ops = Blk_dev_factory.make_5 fd in
-  KVX.blk_dev_ops_ref := Some(blk_dev_ops);  
-  KVX.roots:=Some { bt_rt=b1; min_free=b3;pc_hd=b2;pc_tl=b2 };
-  KVX.set_pcache_state (Pcache_intf.Pcache_state.empty_pcache_state ~root_ptr:b2 ~current_ptr:b2 ~empty:KVX.Pcache_.kvop_map_ops.empty); 
-
+  KVX.make ~blk_dev_ops ~init0:`Empty >>= fun kv_store ->
   let main_thread () = Lwt.(
       Lwt_unix.sleep 2.0 >>= fun () ->
       Printf.printf "Main thread terminating\n\n%!";
       Printf.printf "Queue sizes: q_lru_pc:%d; q_pc_bt:%d (%s)\n%!" 
-        (KVX.q_lru_pc#len ())
-        (KVX.q_pc_bt#len ())
+        (kv_store#q_lru_pc#len ())
+        (kv_store#q_pc_bt#len ())
         __FILE__ ;
-      let roots = !KVX.roots |> Option.get in
+      let roots = kv_store#rt_blk in
       Printf.printf "B-tree root: %d (%s)\n%!" (roots.bt_rt |> B.to_int) __FILE__;
-      Printf.printf "min_free blk_id: %d (%s)\n%!" (roots.min_free |> B.to_int) __FILE__;
+      Printf.printf "min_free blk_id: %d (%s)\n%!" (kv_store#min_free.min_free_blk_id |> B.to_int) __FILE__;
       return ())
   in
-
-  (* first we must write to the btree root block *)
-  blk_dev_ops.write ~blk_id:b1 ~blk:(KVX.Btree_.empty_leaf_as_blk ()) >>= fun () ->
-  Printf.printf "Wrote bt root blk\n%!";
   (* all threads *)
   Lwt.choose [
-    to_lwt @@ (Lazy.force KVX.pcache_thread)#start_pcache_thread();
-    to_lwt @@ (Lazy.force KVX.btree_thread)#start_btree_thread();
-    to_lwt @@ (test_thread ~q_lru_pc:KVX.q_lru_pc ~lru_ops:KVX.lru_ops)#start_test_thread();
+    to_lwt @@ kv_store#pcache_thread#start_pcache_thread();
+    to_lwt @@ kv_store#btree_thread#start_btree_thread();
+    to_lwt @@ (test_thread ~q_lru_pc:kv_store#q_lru_pc ~lru_ops:kv_store#lru_ops)#start_test_thread();
     main_thread ()
   ]
   |> from_lwt

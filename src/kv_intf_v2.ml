@@ -5,23 +5,35 @@ open Std_types
 
 (** {2 Root manager and (uncached) B-tree} *)
 
+(*
 class type ['a] generic_root_man = object
   method set_blk_dev_ops: std_blk_dev_ops -> unit
   method check_initialized: unit -> unit
   method read_roots: unit -> ('a,t)m
   method write_roots: 'a -> (unit,t)m
 end
+*)
+
+class type ['a] root_man = object
+  (* method set_blk_dev_ops: std_blk_dev_ops -> unit *)
+  (* method check_initialized: unit -> unit *)
+  method read_roots: unit -> ('a,t)m
+  method write_roots: 'a -> (unit,t)m
+end
+
 
 (** The particular instance we use *)
 
+(*
 type rt_blk = {
   bt_rt:blk_id;
   min_free:blk_id;
   pc_hd:blk_id;
   pc_tl:blk_id
 }
+*)
 
-type root_man = rt_blk generic_root_man
+(* type root_man = rt_blk pvt_root_man *)
 
 (** NOTE the use of a unit arg to blk_dev_ops and others is to
    encourage that the blk_dev_ops method is used once only to avoid
