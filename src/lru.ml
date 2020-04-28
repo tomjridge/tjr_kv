@@ -4,7 +4,6 @@ open Tjr_monad.With_lwt
 open Lwt_aux
 open Std_types
 open Kv_intf
-open Kv_intf_v2
 open Kv_config_profilers
 
 module L = Tjr_lru_cache
@@ -15,7 +14,7 @@ class type ['k,'v,'mt_state] args = object
     with_lru:('mt_state, t) with_state ->
     to_lower:(('k, 'v, t) lru_pc_msg -> (unit, t) m) ->
     ('k, 'v, t)mt_ops
-  method q_lru_pc: unit -> ('k,'v)q_lru_pc
+  method q_lru_pc: unit -> ('k,'v,t)q_lru_pc
 end
 
 (** result: get_lru_ops + ... *)
@@ -29,13 +28,10 @@ end
 let make_lru (type k v mt_state) (args:(k,v,mt_state)args) 
   : (k,v,mt_state)lru = 
   let open (struct
-    let [l2d_aa   ;l2d_ab] = 
-      ["l2d:aa" ;"l2d:ab"] 
-      |> List.map intern 
-    [@@warning "-8"]
+    let l2d_aa = intern "l2d:aa"
     let mark = lru_profiler.mark
 
-    let q_lru_pc : (k,v) q_lru_pc = args#q_lru_pc ()
+    let q_lru_pc : (k,v,_) q_lru_pc = args#q_lru_pc ()
 
     let make_multithreaded_lru = args#make_multithreaded_lru
 
@@ -45,7 +41,7 @@ let make_lru (type k v mt_state) (args:(k,v,mt_state)args)
       return () >>= fun () ->
       mark l2d_aa;
       q_lru_pc#enqueue msg >>= fun r -> 
-      mark l2d_ab;
+      mark (-1 * l2d_aa);
       return r
 
     let to_lower = enqueue  (* NOTE used in lru_callback_ops below FIXME
@@ -73,7 +69,7 @@ let make_lru (type k v mt_state) (args:(k,v,mt_state)args)
         ~with_lru:(!with_lru_ref |> Option.get) 
         ~to_lower
 
-    let _ : unit -> (k,v,lwt) mt_ops = lru_ops
+    let _ : unit -> (k,v,_) mt_ops = lru_ops
 
     let msg2string = 
       let open Msg_lru_pc in

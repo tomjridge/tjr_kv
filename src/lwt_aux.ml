@@ -2,10 +2,6 @@
 
 open Tjr_monad.With_lwt
 open Tjr_mem_queue.Memq_intf
-(* open Kv_intf *)
-(* open Intf_v2 *)
-
-(* FIXME this isn't quite correct - we want lwt combined with state-passing of the fun_store *)
 
 include struct
 

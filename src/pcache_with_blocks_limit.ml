@@ -1,4 +1,4 @@
-(** This is a pcache (detachable map) which automatically detaches after
+(** This is a pcache wrapper which automatically detaches after
    a certain number of blocks *)
 
 type ('k,'v,'t) pcache_with_lim_ops = ('k,'v,'t) Tjr_fs_shared.Shared_map_ops.map_ops

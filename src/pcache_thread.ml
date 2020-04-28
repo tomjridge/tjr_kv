@@ -4,15 +4,14 @@ open Tjr_monad.With_lwt
 open Lwt_aux
 open Std_types
 open Kv_intf
-open Kv_intf_v2
 open Kv_config_profilers
 
 let make_pcache_thread (type k v ls kvop_map)
     ~(kvop_map_ops:(k,(k,v)kvop,kvop_map)Tjr_map.map_ops)
     ~pcache_blocks_limit
     ~(pcache_ops:(_,_,_,_,_)pcache_ops)
-    ~(q_lru_pc:(_,_)q_lru_pc)
-    ~(q_pc_bt:(_,_)q_pc_bt)
+    ~(q_lru_pc:(_,_,_)q_lru_pc)
+    ~(q_pc_bt:(_,_,_)q_pc_bt)
   : < start_pcache_thread: unit -> (unit,t)m > 
   =
   let open (struct
@@ -133,8 +132,9 @@ let make_pcache_thread (type k v ls kvop_map)
     let yield = Lwt.(return ())
 
     (* NOTE currently pcache doesn't sleep at all *)
-
-    let start_pcache_thread () : (unit,t)m = Lwt_aux.(pcache_thread ~pcache_ops ~yield ~sleep ())
+                  
+    let start_pcache_thread () : (unit,t)m = Lwt_aux.(
+        pcache_thread ~pcache_ops ~yield ~sleep ())
   end)
   in
   object method start_pcache_thread=start_pcache_thread end

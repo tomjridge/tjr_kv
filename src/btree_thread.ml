@@ -3,12 +3,12 @@
 open Tjr_monad.With_lwt
 open Std_types
 open Kv_intf
-open Kv_intf_v2
+(* open Kv_intf_v2 *)
 open Kv_config_profilers
 
 let make_btree_thread (type ls) 
-    ~(q_pc_bt:(_,_)q_pc_bt)
-    ~(map_ops:('k,'v,r,'ls,t)map_ops_with_ls)
+    ~(q_pc_bt:(_,_,_)q_pc_bt)
+    ~(map_ops:('k,'v,r,ls,t)map_ops_with_ls)
   : < start_btree_thread: unit -> (unit,t)m >
   = 
   let open (struct

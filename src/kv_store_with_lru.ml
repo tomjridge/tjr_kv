@@ -12,69 +12,91 @@
 
 We construct the following...
 
+
+{3 Queues: q_lru_pc and q_pc_bt}
+
+  - q_lru_pc, a msg queue from the lru to the pcache
+  - q_pc_bt, a msg queue from the pcache to the B-tree
+
+
+{3 Blk allocator}
+
+  - provides blk alloc/free
+
+
 {3 LRU}
 
-  - q_lru_pc, a msg queue from lru to pcache
-  - Lru and lru_state
-  - lru_thrd, which takes messages from lru.to_lower to enqueue on
-    q_lru_pc; the lru interface itself can be used by many threads safely
-
-
-
+  - lru_ops, concurrent-safe map operations
+  
 
 {3 Pcache }
 
-  - q_pc_bt, a msg queue from pcache to B-tree
-  - Pcache and pcache_state
-  - pc_thrd, which takes msgs from q_pc_btree and executes against pcache; also performs detach occasionally and enqueue messages to q_pc_bt
+  - pcache_thread, which takes msgs from q_pc_bt and executes against the pcache; also performs detach occasionally and enqueues messages to q_pc_bt
 
 
 {3 B-tree}
 
-  - B-tree
-  - bt_thrd listening to q_pc_btree; also includes root manager functionality
+  - btree_thread, listening to q_pc_bt and executing operations against the B-tree
+
+
+{3 Root manager}
+
+  - root_man, which is responsible for persisting the roots for the B-tree and the pcache
 
 *)
 
-(* old doc?
 
-{3 Functional store thread}
-
-  - this maintains the "global" state, including locks etc
-  - the queues are kept separate since they are implemented using
-    mutation anyway FIXME perhaps prefer a "functional" version using
-    the functional store
-  - includes: lru_state; pcache_state; btree_state (a root pointer?)
-  - also includes an Lwt_mvar for communication and implementation of
-    with_state (?FIXME still true?)
-*)
+(** {2 Code} *)
 
 open Tjr_monad.With_lwt
 open Lwt_aux  (* provides various msg queues *)
 open Std_types
-(* open Kv_intf  *)
-open Kv_intf_v2
+open Kv_intf
+(* open Kv_intf_v2 *)
 (* open Kv_config_runtime *)
 let runtime_config = Kv_config_runtime.config
 (* open Kv_profilers *)
 
 
-class ['a] mutable_ = object
-  val mutable the_ref = (Obj.magic () : 'a)
-  val mutable is_set : bool = false
-  method set x = the_ref <- x
-  method get = 
-    assert(is_set);
-    the_ref
-  method is_set = is_set
-end
 
-class ['a] set_once = object (self:'self)
-  inherit ['a] mutable_
-  method! set x = 
-    assert(not(is_set));
-    the_ref <- x
-end
+type rt_blk = {
+  mutable bt_rt: blk_id;
+  mutable pc_hd: blk_id;
+  mutable pc_tl: blk_id
+}
+
+type min_free = { 
+  mutable min_free_blk_id: blk_id;
+}
+
+
+type ('k,'v) kv_store = <
+  blk_alloc     : (r, t) blk_allocator_ops;
+  btree_thread  : < start_btree_thread : unit -> (unit, t)m >;
+  lru_ops       : ('k, 'v, t) mt_ops;
+  min_free      : min_free;
+  pcache_thread : < start_pcache_thread : unit -> (unit, t)m >;
+  q_lru_pc      : ('k, 'v, t) q_lru_pc;
+  q_pc_bt       : ('k, 'v, t) q_pc_bt;
+  root_man      : (rt_blk, t) root_man; 
+  rt_blk        : rt_blk 
+>
+(**
+{[
+type ('k,'v) kv_store = <
+  blk_alloc     : (r, t) blk_allocator_ops;
+  btree_thread  : < start_btree_thread : unit -> (unit, t)m >;
+  lru_ops       : ('k, 'v, t) mt_ops;
+  min_free      : min_free;
+  pcache_thread : < start_pcache_thread : unit -> (unit, t)m >;
+  q_lru_pc      : ('k, 'v) q_lru_pc;
+  q_pc_bt       : ('k, 'v) q_pc_bt;
+  root_man      : rt_blk root_man; 
+  rt_blk        : rt_blk 
+>
+]}
+
+*)
 
 module type S = sig
   type k[@@deriving bin_io]
@@ -86,6 +108,8 @@ module type S = sig
   val v_size: int
   val r_size: int
 end
+
+
 
 module Make(S:S) = struct
   open S
@@ -114,17 +138,7 @@ module Make(S:S) = struct
       let async = async
       let event_ops = event_ops
     end)
-  type mt_state = Lru_.mt_state
-
-  type rt_blk = {
-    mutable bt_rt: blk_id;
-    mutable pc_hd: blk_id;
-    mutable pc_tl: blk_id
-  }
-
-  type min_free = {
-    mutable min_free_blk_id: blk_id;
-  }
+  type mt_state = Lru_.mt_state  
 
   let make ~blk_dev_ops ~(init0:[`From_disk | `Empty]) = 
     let open (struct
@@ -142,13 +156,13 @@ module Make(S:S) = struct
 
       (** {2 Message queues} *)
 
-      let q_lru_pc : (k,v) q_lru_pc = Tjr_mem_queue.With_lwt.make_as_object ()  
-      let q_pc_bt : (k,v) q_pc_bt = Tjr_mem_queue.With_lwt.make_as_object ()
+      let q_lru_pc : (k,v,_) q_lru_pc = Tjr_mem_queue.With_lwt.make_as_object ()  
+      let q_pc_bt : (k,v,_) q_pc_bt = Tjr_mem_queue.With_lwt.make_as_object ()
 
 
       (** {2 Root manager} *)
 
-      let root_man : rt_blk Kv_intf_v2.root_man = 
+      let root_man : (rt_blk,_) root_man = 
         Root_manager.make_3 ~blk_dev_ops ~blk_id:b0
 
       let init = 
@@ -167,7 +181,7 @@ module Make(S:S) = struct
       
       (** {2 Blk allocator} *)
           
-      let min_free : min_free Kv_intf_v2.root_man = 
+      let min_free : (min_free,_) root_man = 
         Root_manager.make_3 ~blk_dev_ops ~blk_id:b1
 
       let init = 
@@ -296,7 +310,7 @@ module Make(S:S) = struct
       let lru_ops = lru#get_lru_ops ()
     end)
     in
-    return (object
+    let obj : (_,_)kv_store = object
       method q_lru_pc      = q_lru_pc
       method q_pc_bt       = q_pc_bt
       method rt_blk        = rt_blk
@@ -306,7 +320,18 @@ module Make(S:S) = struct
       method btree_thread  = btree_thread
       method pcache_thread = pcache_thread
       method lru_ops       = lru_ops
-    end)
+    end
+    in
+    return obj
+(**
+{[
+blk_dev_ops:(blk_id, Bigstring.t, t) blk_dev_ops ->
+init0:[ `Empty | `From_disk ] ->
+((k, v) kv_store, t) m
+]}
+*)
+
+  let _ = make
 
 end
 

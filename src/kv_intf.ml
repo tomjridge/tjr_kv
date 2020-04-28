@@ -1,15 +1,8 @@
-(*
-module Blk_id_as_int = struct
-  type blk_id = int
-end
-*)
-
 module Btree_ops = struct
   (* FIXME also include "batch" op *)
 
-  (** The operations supported by the B-tree. Even though the B-tree is
-      synchronous, the "sync" operation is used to reveal the current
-      root block. *)
+  (** The operations supported by the B-tree. NOTE the "sync"
+     operation is used to reveal the current root block. *)
   type ('k,'v,'blk_id,'t) btree_ops = {
     find: 'k -> ('v option,'t)m;
     insert: 'k -> 'v -> (unit,'t)m;
@@ -20,7 +13,7 @@ module Btree_ops = struct
 end
 
 module Msg_pc_bt = struct
-  (** The type of messages sent from the DCL to the B-tree.
+  (** The type of messages sent from the pcache to the B-tree.
 
       This is a callback-oriented interface, with operations [find] and
       [detach] (to handle a list of operations... assumed to come from a
@@ -52,6 +45,47 @@ module Msg_lru_pc = struct
 end
 
 
+(** {2 Root man} *)
+
+class type ['a,'t] root_man = object
+  method read_roots: unit -> ('a,'t)m
+  method write_roots: 'a -> (unit,'t)m
+end
+
+
+(** {2 Messages} *)
+
+type ('k,'v,'t) pc_bt_msg = ('k,'v,blk_id,'t) Msg_pc_bt.pc_bt_msg
+
+class type ['k,'v,'t] q_pc_bt = object
+  method enqueue: ('k,'v,'t) pc_bt_msg -> (unit,'t)m
+  method dequeue: unit -> (('k,'v,'t) pc_bt_msg,'t)m
+  method len: unit -> int
+end
+
+type ('k,'v,'t) lru_pc_msg = ('k,'v,'t) Msg_lru_pc.lru_pc_msg
+
+class type ['k,'v,'t] q_lru_pc = object
+  method enqueue: ('k,'v,'t) lru_pc_msg -> (unit,'t)m
+  method dequeue: unit -> (('k,'v,'t) lru_pc_msg,'t)m
+  method len: unit -> int
+end
+
+
+
+
+
+(*
+module Root_man_ops = struct
+
+  type ('a,'t) root_man = {
+    read_roots: unit -> ('a,'t)m;
+    write_roots: ?sync:bool -> 'a -> (unit,'t)m;
+  }
+
+end
+*)
+
 (*
 module Pmap = struct
   (** A persistent map is formed from a B-tree and a detachable map
@@ -74,6 +108,7 @@ module Pmap = struct
 end
 *)
 
+(*
 module Syncable_map = struct
 
   (** {2 Simple syncable map} *)
@@ -120,12 +155,11 @@ FIXME shouldn't batch use kvop?
     ksync: 'k -> ('ptr,'t)m;
     ks_sync: 'k list -> ('ptr,'t)m
   }
-
-
   
 end
+*)
 
-
+(*
 module Msg_btree_rootman = struct
 
   (** A pair of roots, one for the detachable map, and one for the B-tree *)
@@ -135,13 +169,5 @@ module Msg_btree_rootman = struct
   }
 
 end
+*)
 
-
-module Root_man_ops = struct
-
-  type ('a,'t) root_man = {
-    read_roots: unit -> ('a,'t)m;
-    write_roots: ?sync:bool -> 'a -> (unit,'t)m;
-  }
-
-end
