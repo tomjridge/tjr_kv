@@ -1,7 +1,7 @@
 (** The LRU *)
 
 open Tjr_monad.With_lwt
-open Lwt_aux
+(* open Lwt_aux *)
 open Std_types
 open Kv_intf
 open Kv_config_profilers
@@ -35,7 +35,9 @@ let make_lru (type k v mt_state) (args:(k,v,mt_state)args)
 
     let make_multithreaded_lru = args#make_multithreaded_lru
 
-    let lru_lock = Lwt_aux.create_mutex()
+    let lru_lock = Tjr_monad.With_lwt.create_mutex()
+
+    let _ = lru_lock
 
     let enqueue msg = 
       return () >>= fun () ->
@@ -52,7 +54,7 @@ let make_lru (type k v mt_state) (args:(k,v,mt_state)args)
     let set_initial_state s = 
       let lru_state = ref s in
       let with_state f = 
-        from_lwt (Lwt_mutex.lock lru_lock) >>= fun () ->
+        lwt_mutex_ops.lock lru_lock >>= fun () ->
         f ~state:(!lru_state) ~set_state:(fun lru ->
             lru_state:=lru; return ()) >>= fun a ->
         (Lwt_mutex.unlock lru_lock; return a)

@@ -64,7 +64,7 @@ let make_btree_thread (type ls)
       match msg with
       | Find(k,callback) ->
         find ~k >>= fun v ->
-        Lwt_aux.async(fun () -> callback v) >>= fun () ->
+        async(fun () -> callback v) >>= fun () ->
         read_and_dispatch ()
       | Detach { ops; new_pcache_root } ->
         loop ops >>= fun () ->

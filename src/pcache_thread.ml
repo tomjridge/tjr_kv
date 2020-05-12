@@ -1,7 +1,7 @@
 (** Pcache worker thread *)
 
 open Tjr_monad.With_lwt
-open Lwt_aux
+(* open Lwt_aux *)
 open Std_types
 open Kv_intf
 open Kv_config_profilers
@@ -17,7 +17,7 @@ let make_pcache_thread (type k v ls kvop_map)
   let open (struct
 
     type nonrec pcache_ops = (k,v,blk_id,kvop_map,lwt) pcache_ops
-    type nonrec pcache_state = (blk_id,kvop_map) Pcache_intf.Pcache_state.pcache_state
+    type nonrec pcache_state = (blk_id,kvop_map) Pcache_intf.pcache_state
 
     let [d2b_aa   ;d2b_ab   ;d2b_ca   ;d2b_cb   ;pcache_l2d_deq1   ;pcache_l2d_deq2   ;pcache_es] = 
       ["d2b:aa" ;"d2b:ab" ;"d2b:ca" ;"d2b:cb" ;"pcache:l2d.deq1" ;"pcache:l2d.deq2" ;"pcache_es"] 
@@ -75,7 +75,7 @@ let make_pcache_thread (type k v ls kvop_map)
           | (k,e)::es -> 
             (* let open Tjr_lru_cache in *)
             (* let open Mt_intf in *)
-            match (e:v Tjr_lru_cache.Im_intf.entry) with
+            match (e:v entry) with
             | Insert { value=v; dirty } -> 
               assert(dirty); (* FIXME? or maybe refine the to_lower msgs *)
               pcache_ops.insert k v >>= fun () ->
@@ -133,8 +133,8 @@ let make_pcache_thread (type k v ls kvop_map)
 
     (* NOTE currently pcache doesn't sleep at all *)
                   
-    let start_pcache_thread () : (unit,t)m = Lwt_aux.(
-        pcache_thread ~pcache_ops ~yield ~sleep ())
+    let start_pcache_thread () : (unit,t)m = 
+        pcache_thread ~pcache_ops ~yield ~sleep ()
   end)
   in
   object method start_pcache_thread=start_pcache_thread end

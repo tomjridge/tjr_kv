@@ -1,9 +1,3 @@
-/tjr_kv.install
-.merlin
-_build/
-/dune-project
 /tjr_kv_config.json
-/dmap.store
-/src/internal_staging.ml.html
 /btree.store
 /kv.store

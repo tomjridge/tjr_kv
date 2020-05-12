@@ -33,10 +33,10 @@ module Msg_pc_bt = struct
 end
 
 module Msg_lru_pc = struct
-  open Im_intf
+  (* open Im_intf *)
   (* FIXME this should probably be moved to fs_shared *)
   type ('k,'v,'t) lru_pc_msg
-    = ('k,'v,'t) Tjr_lru_cache.Mt_intf.Msg_type.msg
+    = ('k,'v,'t) lru_msg
     =  Insert of 'k*'v*(unit -> (unit,'t)m)
     | Delete of 'k*(unit -> (unit,'t)m)
     | Find of 'k * ('v option -> (unit,'t)m)
@@ -54,6 +54,7 @@ end
 
 
 (** {2 Messages} *)
+open Blk_id_as_int
 
 type ('k,'v,'t) pc_bt_msg = ('k,'v,blk_id,'t) Msg_pc_bt.pc_bt_msg
 

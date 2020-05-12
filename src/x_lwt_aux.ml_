@@ -1,7 +1,8 @@
 (** Lwt support FIXME move to shared? or tjr_monad? *)
 
 open Tjr_monad.With_lwt
-open Tjr_mem_queue.Memq_intf
+
+(* open Tjr_mem_queue.Memq_intf *)
 
 include struct
 
@@ -16,61 +17,8 @@ end
 
 
 
-(** async for lwt *)
-let async : Tjr_monad.With_lwt.lwt Tjr_lru_cache.Mt_intf.Threading_types.async = 
-  fun (f:unit -> (unit,lwt) m) : (unit,lwt) m ->
-    Lwt.async (fun () -> f () |> to_lwt); return ()
 
 
-(** {2 Lwt mutex basic funs} *)
-
-
-(* FIXME move elsewhere - tjr_monad? *)
-
-(* private; basic support from lwt. NOTE lock and wait are in Lwt.t *)
-module Internal : sig
-  val create_mutex : unit -> Lwt_mutex.t
-  val create_cvar : unit -> 'a Lwt_condition.t
-  val lock : Lwt_mutex.t -> unit Lwt.t
-  val unlock : Lwt_mutex.t -> unit
-  val signal : unit Lwt_condition.t -> unit
-  val wait : mut:Lwt_mutex.t -> cvar:'a Lwt_condition.t -> 'a Lwt.t
-end = struct 
-  let create_mutex () = Lwt_mutex.create() 
-  let create_cvar () = Lwt_condition.create() 
-  let lock mut = Lwt_mutex.lock mut
-  let unlock mut = Lwt_mutex.unlock mut
-  let signal cvar = Lwt_condition.broadcast cvar ()
-  let wait ~mut ~cvar = Lwt_condition.wait ~mutex:mut cvar
-end
-include Internal
-
-
-(** {2 Lwt mutex ops, msg queue_ops} *)
-
-module Lwt_mutex_ops = struct
-  (* FIXME move mutex and cvar ops from mem_queue to tjr_monad; give
-     lwt impl there *)
-
-  let mutex_ops : ('m,'c,'t) mutex_ops = {
-    create_mutex=(fun () ->
-        Lwt_mutex.create() |> fun mut ->
-        return mut);
-    create_cvar=(fun () ->
-        Lwt_condition.create() |> fun cvar ->
-        return cvar);
-    lock=(fun mut ->
-        Lwt_mutex.lock mut |> from_lwt);
-    unlock=(fun mut ->
-        Lwt_mutex.unlock mut |> fun _ -> return ());
-    signal=(fun cvar ->
-        Lwt_condition.broadcast cvar () |> fun _ -> return ());
-    wait=(fun mut cvar ->
-        Lwt_condition.wait ~mutex:mut cvar |> from_lwt)
-  }
-
-end
-include Lwt_mutex_ops
 
 
 (*
