@@ -50,7 +50,7 @@ We construct the following...
 
 open Tjr_monad.With_lwt
 open Lwt_aux  (* provides various msg queues *)
-open Std_types
+open Sh_std_ctxt
 open Kv_intf
 (* open Kv_intf_v2 *)
 (* open Kv_config_runtime *)
@@ -102,7 +102,7 @@ module type S = sig
   type k[@@deriving bin_io]
   type v[@@deriving bin_io]
   val k_cmp: k -> k -> int
-  type r = Std_types.r[@@deriving bin_io]
+  type r = Sh_std_ctxt.r[@@deriving bin_io]
 
   val k_size: int
   val v_size: int
@@ -118,13 +118,13 @@ module Make(S:S) = struct
     (module S)
 
   module Btree_ = Tjr_btree_examples.Make_1.Make(struct
-      include Std_types 
+      include Sh_std_ctxt 
       include S 
       let cs = Tjr_btree_examples.Make_1.make_constants ~k_size ~v_size 
     end)
 
   module Pcache_ = Tjr_pcache.Make.Make(struct 
-      include Std_types 
+      include Sh_std_ctxt 
       include S 
       let marshalling_config = marshalling_config 
     end)
@@ -343,7 +343,7 @@ module Int_int_ex = struct
     type k = int[@@deriving bin_io]
     type v = int[@@deriving bin_io]
     let k_cmp = Int_.compare
-    type r = Std_types.r[@@deriving bin_io]
+    type r = Sh_std_ctxt.r[@@deriving bin_io]
     let k_size = 9
     let v_size = 9
     let r_size = 9

@@ -1,6 +1,6 @@
 (** Test the KV store with an LRU frontend *)
 open Kv_intf
-open Std_types
+open Sh_std_ctxt
 open Tjr_monad.With_lwt
 
 let file_ops = lwt_file_ops
