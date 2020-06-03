@@ -30,7 +30,7 @@ let make_1
   in
   (read_roots,write_roots)
 
-open Sh_std_ctxt
+open Shared_ctxt
 
 let make_3 ~blk_dev_ops ~blk_id : (_,_) root_man = 
   let (read_roots,write_roots) = make_1 ~monad_ops ~blk_ops ~blk_dev_ops ~blk_id in

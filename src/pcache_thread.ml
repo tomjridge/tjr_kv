@@ -2,7 +2,7 @@
 
 open Tjr_monad.With_lwt
 (* open Lwt_aux *)
-open Sh_std_ctxt
+open Shared_ctxt
 open Kv_intf
 open Kv_config_profilers
 
@@ -129,7 +129,7 @@ let make_pcache_thread (type k v ls kvop_map)
       read_and_dispatch ()
 
     (* adjust yield so that we don't yield at all.. but perhaps this is a bad idea? *)
-    let yield = Lwt.(return ())
+    let yield () = Lwt.(return ())
 
     (* NOTE currently pcache doesn't sleep at all *)
                   

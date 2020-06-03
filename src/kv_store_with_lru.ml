@@ -49,8 +49,8 @@ We construct the following...
 (** {2 Code} *)
 
 open Tjr_monad.With_lwt
-open Lwt_aux  (* provides various msg queues *)
-open Sh_std_ctxt
+(* open Lwt_aux  (\* provides various msg queues *\) *)
+open Shared_ctxt
 open Kv_intf
 (* open Kv_intf_v2 *)
 (* open Kv_config_runtime *)
@@ -102,13 +102,22 @@ module type S = sig
   type k[@@deriving bin_io]
   type v[@@deriving bin_io]
   val k_cmp: k -> k -> int
-  type r = Sh_std_ctxt.r[@@deriving bin_io]
+  type r = Shared_ctxt.r[@@deriving bin_io]
 
   val k_size: int
   val v_size: int
   val r_size: int
 end
 
+module type S' = sig
+  type k
+  type v
+  type r = Shared_ctxt.r
+  val k_cmp: k -> k -> int
+  val km: k bp_mshlr
+  val vm: v bp_mshlr
+  val rm: r bp_mshlr (* should be in Shared_ctxt *)
+end
 
 
 module Make(S:S) = struct
@@ -118,13 +127,13 @@ module Make(S:S) = struct
     (module S)
 
   module Btree_ = Tjr_btree_examples.Make_1.Make(struct
-      include Sh_std_ctxt 
+      include Shared_ctxt 
       include S 
       let cs = Tjr_btree_examples.Make_1.make_constants ~k_size ~v_size 
     end)
 
   module Pcache_ = Tjr_pcache.Make.Make(struct 
-      include Sh_std_ctxt 
+      include Shared_ctxt 
       include S 
       let marshalling_config = marshalling_config 
     end)

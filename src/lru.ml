@@ -2,7 +2,7 @@
 
 open Tjr_monad.With_lwt
 (* open Lwt_aux *)
-open Sh_std_ctxt
+open Shared_ctxt
 open Kv_intf
 open Kv_config_profilers
 
