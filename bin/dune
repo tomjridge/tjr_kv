@@ -6,7 +6,7 @@
   -open Tjr_btree_examples
 ;  -open Tjr_btree_examples.Intf
   -open Tjr_pcache -open Tjr_pcache.Pcache_intf 
-  -open Tjr_mem_queue -open Tjr_lru_cache -open Tjr_lru_cache.Mt_intf 
+  -open Tjr_mem_queue -open Tjr_lru_cache -open Tjr_lru_cache 
   -open Tjr_kv))
   (libraries tjr_pcache_example tjr_kv lwt.unix tjr_profile))
 

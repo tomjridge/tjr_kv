@@ -70,6 +70,7 @@ type min_free = {
 }
 
 
+(* $(PIPE2SH("""sed -n '/type[ ].*kv_store[ ]/,/^>/p' >GEN.kv_store.ml_""")) *)
 type ('k,'v) kv_store = <
   blk_alloc     : (r, t) blk_allocator_ops;
   btree_thread  : < start_btree_thread : unit -> (unit, t)m >;
@@ -98,6 +99,7 @@ type ('k,'v) kv_store = <
 
 *)
 
+(* FIXME remove deriving; prefer S' *)
 module type S = sig
   type k[@@deriving bin_io]
   type v[@@deriving bin_io]
@@ -109,45 +111,43 @@ module type S = sig
   val r_size: int
 end
 
+(* $(PIPE2SH("""sed -n '/module[ ]type[ ]S/,/^end/p' >GEN.S.ml_""")) *)
 module type S' = sig
+  (* NOTE specialized to shared_ctxt *)
   type k
   type v
-  type r = Shared_ctxt.r
   val k_cmp: k -> k -> int
-  val km: k bp_mshlr
-  val vm: v bp_mshlr
-  val rm: r bp_mshlr (* should be in Shared_ctxt *)
+  val k_mshlr: k bp_mshlr
+  val v_mshlr: v bp_mshlr
 end
+  (* type r = Shared_ctxt.r *)
+  (* val r_mshlr: r bp_mshlr (\* should be in Shared_ctxt *\) *)
 
 
-module Make(S:S) = struct
+module Make(S:S') = struct
   open S
 
-  let marshalling_config : (k,v,r) Pcache_intf.marshalling_config = 
+(*  let marshalling_config : (k,v,r) Pcache_intf.marshalling_config = 
     (module S)
+*)
 
-  module Btree_ = Tjr_btree_examples.Make_1.Make(struct
+  module S1 = struct
       include Shared_ctxt 
       include S 
+      let r_mshlr = bp_mshlrs#r_mshlr
+      let k_size = let open (val k_mshlr) in max_sz
+      let v_size = let open (val v_mshlr) in max_sz
       let cs = Tjr_btree_examples.Make_1.make_constants ~k_size ~v_size 
-    end)
+    end
+  module Btree_ = Tjr_btree.Make_5.Make(S1)
+  let btree_factory = Btree_.btree_factory
 
-  module Pcache_ = Tjr_pcache.Make.Make(struct 
-      include Shared_ctxt 
-      include S 
-      let marshalling_config = marshalling_config 
-    end)
+  module Pcache_ = Tjr_pcache.Make.Make(S1)
+  let pcache_factory = Pcache_.pcache_factory
 
-  module Lru_ = Tjr_lru_cache.Make.Make(struct
-      type k = S.k
-      let compare = S.k_cmp
-      type v = S.v
-      type t = lwt
-      let monad_ops = monad_ops
-      let async = async
-      let event_ops = event_ops
-    end)
-  type mt_state = Lru_.mt_state  
+  module Lru_ = Tjr_lru_cache.Make.Make(S1)
+
+  (* type mt_state = Lru_ .mt_state ; now just Lru_.lru  *)
 
   let make ~blk_dev_ops ~(init0:[`From_disk | `Empty]) = 
     let open (struct
@@ -228,17 +228,18 @@ module Make(S:S) = struct
         in
         { with_state }
 
+      let fctry = btree_factory ~blk_dev_ops ~blk_allocator_ops:blk_alloc ~blk_sz:Shared_ctxt.blk_sz
+
       let btree_thread = Btree_thread.(
-          let x = Btree_.make ~blk_dev_ops ~blk_alloc ~root_ops:with_bt_rt in
-          let module S = (val x) in  (* FIXME this is supposed to be uncached *)
-          make_btree_thread ~q_pc_bt ~map_ops:S.map_ops_with_ls)
+          let x = fctry#make_uncached with_bt_rt in          
+          make_btree_thread ~q_pc_bt ~map_ops:x#map_ops_with_ls)
 
       let init = 
         match init0 with
         | `From_disk -> return ()
         | `Empty ->
           assert(rt_blk.bt_rt=b2);
-          blk_dev_ops.write ~blk_id:b2 ~blk:(Btree_.empty_leaf_as_blk ())
+          blk_dev_ops.write ~blk_id:b2 ~blk:(fctry#empty_leaf_as_blk)
     end)
     in
     init >>= fun () ->
@@ -246,20 +247,15 @@ module Make(S:S) = struct
 
       (** {2 Pcache and pcache_thread } *)
 
+      let fctry = pcache_factory ~blk_alloc:blk_alloc.blk_alloc
+      let fctry1 = fctry#with_blk_dev_ops ~blk_dev_ops
+
       let init =
         match init0 with
-        | `From_disk -> 
-          Pcache_.read_initial_pcache_state 
-            ~read_blk_as_buf:(fun r -> blk_dev_ops.read ~blk_id:r)
-            ~root_ptr:rt_blk.pc_tl
-            ~current_ptr:rt_blk.pc_hd 
+        | `From_disk -> fctry1#read_initial_pcache_state (rt_blk.pc_hd)
         | `Empty -> 
           assert(rt_blk.pc_hd = b3 && rt_blk.pc_tl = b3);
-          let pc = Pcache_state.empty_pcache_state 
-              ~root_ptr:rt_blk.pc_tl
-              ~current_ptr:rt_blk.pc_hd
-              ~empty:Pcache_.kvop_map_ops.empty
-          in
+          let pc = fctry#empty_pcache_state ~ptr:b3  in
           return pc
     end)
     in
@@ -286,35 +282,33 @@ module Make(S:S) = struct
 
       let config = Lazy.force runtime_config
 
-      let pcache_thread = Pcache_.(
-          let pcache_ops = 
-            make_pcache_ops_with_blk_dev 
-              ~blk_dev_ops
-              ~blk_alloc:blk_alloc.blk_alloc
-              ~with_pcache 
-          in
-          Pcache_thread.make_pcache_thread 
-            ~kvop_map_ops
-            ~pcache_blocks_limit:config.pcache_blocks_limit
-            ~pcache_ops
-            ~q_lru_pc
-            ~q_pc_bt)
-      
+      let pcache_thread = 
+        let pcache_ops = fctry1#make_pcache_ops#with_state with_pcache in
+        Pcache_thread.make_pcache_thread
+          ~kvop_map_ops:fctry#kvop_map_ops
+          ~pcache_blocks_limit:config.pcache_blocks_limit
+          ~pcache_ops
+          ~q_lru_pc
+          ~q_pc_bt
+
 
       (** {2 LRU cache} *)
 
       let lru : (k,v,_) Lru.lru = 
         let open Lru in
+        let fctry = 
+              Lru_.lru_factory 
+                ~max_size:config.lru_max_size 
+                ~evict_count:config.lru_evict_count
+        in
         let args : (_,_,_) args = 
           object 
-            method make_multithreaded_lru=Lru_.make_multithreaded_lru
+            method make_multithreaded_lru=fun ~with_lru ~to_lower -> 
+              fctry#make ~with_lru ~to_lower
             method q_lru_pc ()=q_lru_pc
           end
         in
         make_lru args
-
-      let _ : unit = lru#set_initial_state 
-          (Lru_.init_state ~max_size:config.lru_max_size ~evict_count:config.lru_evict_count)
 
       let lru_ops = lru#get_lru_ops ()
     end)
@@ -348,18 +342,15 @@ end
 module Int_int_ex = struct
   (**/**)
   module Internal = struct
-    open Bin_prot.Std
-    type k = int[@@deriving bin_io]
-    type v = int[@@deriving bin_io]
+    include Shared_ctxt
+    type k = int
+    type v = int
     let k_cmp = Int_.compare
-    type r = Sh_std_ctxt.r[@@deriving bin_io]
-    let k_size = 9
-    let v_size = 9
-    let r_size = 9
+    let k_mshlr = bp_mshlrs#int_mshlr
+    let v_mshlr = bp_mshlrs#int_mshlr
   end
   module Internal2 = Make(Internal)
   (**/**)
   let make = Internal2.make
-
 end
 

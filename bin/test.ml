@@ -1,12 +1,12 @@
 (** Test the KV store with an LRU frontend *)
 open Kv_intf
-open Sh_std_ctxt
+open Shared_ctxt
 open Tjr_monad.With_lwt
 
 let file_ops = lwt_file_ops
 
 open Tjr_kv
-open Lwt_aux
+(* open Lwt_aux *)
 
 module KVX = Kv_store_with_lru.Int_int_ex
 
@@ -24,7 +24,7 @@ let test_thread ~(q_lru_pc:(_,_,_)q_lru_pc) ~lru_ops =
   let q_len = q_lru_pc#len in
   let maybe_yield n = 
     n mod tst_thrd_yld_its = 0 |> function 
-    | true -> from_lwt(Lwt_aux.yield ())
+    | true -> from_lwt(Tjr_monad.With_lwt.yield ())
     | false -> return ()
   in
   let maybe_sleep n =
