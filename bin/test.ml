@@ -56,7 +56,7 @@ let test_thread ~(q_lru_pc:(_,_,_)q_lru_pc) ~lru_ops =
 (** Start pcache, bt and test thread; wait 2s; then print some stats *)
 let example = 
   lwt_file_ops.open_ ~fn ~create:true ~init:true >>= fun fd ->
-  let blk_dev_ops = Blk_dev_factory.make_5 fd in
+  let blk_dev_ops = (blk_devs#with_ba_buf#from_fd fd)#blk_dev_ops in
   KVX.make ~blk_dev_ops ~init0:`Empty >>= fun kv_store ->
   let main_thread () = Lwt.(
       Lwt_unix.sleep 2.0 >>= fun () ->

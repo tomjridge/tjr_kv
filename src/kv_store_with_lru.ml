@@ -48,7 +48,7 @@ We construct the following...
 
 (** {2 Code} *)
 
-open Tjr_monad.With_lwt
+(* open Tjr_monad.With_lwt *)
 (* open Lwt_aux  (\* provides various msg queues *\) *)
 open Shared_ctxt
 open Kv_intf
