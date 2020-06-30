@@ -139,7 +139,7 @@ module Make(S:S') = struct
       let v_size = let open (val v_mshlr) in max_sz
       let cs = Tjr_btree_examples.Make_1.make_constants ~k_size ~v_size 
     end
-  module Btree_ = Tjr_btree.Make_5.Make(S1)
+  module Btree_ = Tjr_btree.Pvt.Make_5.Make(S1)
   let btree_factory = Btree_.btree_factory
 
   module Pcache_ = Tjr_pcache.Make.Make(S1)
