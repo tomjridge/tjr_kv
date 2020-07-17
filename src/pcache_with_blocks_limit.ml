@@ -1,7 +1,16 @@
 (** This is a pcache wrapper which automatically detaches after
    a certain number of blocks *)
 
-type ('k,'v,'t) pcache_with_lim_ops = ('k,'v,'t) Tjr_fs_shared.Shared_map_ops.map_ops
+(** fidi = find insert delete insertmany *)
+type ('k,'v,'t) map_fidi_ops = {
+  find        : 'k -> ('v option,'t) m;
+  insert      : 'k -> 'v -> (unit,'t) m;
+  delete      : 'k -> (unit,'t)m;
+  insert_many : 'k -> 'v -> ('k*'v) list -> (('k*'v)list,'t) m
+}
+
+
+type ('k,'v,'t) pcache_with_lim_ops = ('k,'v,'t) map_fidi_ops
 
 (** NOTE bt_find and bt_handle_detach are named for the particular
    application we envisage: a persistent cache which hands over to a
@@ -73,6 +82,6 @@ let make_ops
     (* FIXME we should do something smarter here *)
     insert k v >>= fun () -> return kvs
   in
-  Tjr_fs_shared.Shared_map_ops.{find;insert;delete;insert_many}
+  {find;insert;delete;insert_many}
 
 let _ = make_ops

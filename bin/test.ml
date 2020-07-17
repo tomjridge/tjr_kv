@@ -1,3 +1,5 @@
+(* FIXME resurrect 
+
 (** Test the KV store with an LRU frontend *)
 open Kv_intf
 open Shared_ctxt
@@ -82,3 +84,4 @@ let example =
   |> from_lwt
 
 let _ = Lwt_main.run (to_lwt example)
+*)

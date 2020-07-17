@@ -137,9 +137,9 @@ module Make(S:S') = struct
       let r_mshlr = bp_mshlrs#r_mshlr
       let k_size = let open (val k_mshlr) in max_sz
       let v_size = let open (val v_mshlr) in max_sz
-      let cs = Tjr_btree_examples.Make_1.make_constants ~k_size ~v_size 
+      let cs = Tjr_btree.Bin_prot_marshalling.make_constants ~blk_sz ~k_size ~v_size
     end
-  module Btree_ = Tjr_btree.Pvt.Make_5.Make(S1)
+  module Btree_ = Tjr_btree.Make_6.Make_v1(S1)
   let btree_factory = Btree_.btree_factory
 
   module Pcache_ = Tjr_pcache.Make.Make(S1)
@@ -219,6 +219,7 @@ module Make(S:S') = struct
 
       (** {2 B-tree/btree ops/bt thread} *)
 
+(*
       let with_bt_rt = 
         let with_state f = 
           f ~state:rt_blk.bt_rt
@@ -227,11 +228,11 @@ module Make(S:S') = struct
                 return ())
         in
         { with_state }
+*)
 
-      let fctry = btree_factory ~blk_dev_ops ~blk_allocator_ops:blk_alloc ~blk_sz:Shared_ctxt.blk_sz
+      let x = btree_factory#uncached ~blk_dev_ops ~blk_alloc ~init_btree_root:rt_blk.bt_rt
 
       let btree_thread = Btree_thread.(
-          let x = fctry#make_uncached with_bt_rt in          
           make_btree_thread ~q_pc_bt ~map_ops:x#map_ops_with_ls)
 
       let init = 
@@ -239,7 +240,8 @@ module Make(S:S') = struct
         | `From_disk -> return ()
         | `Empty ->
           assert(rt_blk.bt_rt=b2);
-          blk_dev_ops.write ~blk_id:b2 ~blk:(fctry#empty_leaf_as_blk)
+          btree_factory#write_empty_leaf ~blk_dev_ops ~blk_id:b2
+            
     end)
     in
     init >>= fun () ->
