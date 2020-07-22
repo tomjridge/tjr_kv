@@ -35,7 +35,7 @@ let make_lru (type k v mt_state) (args:(k,v,mt_state)args)
 
     let make_multithreaded_lru = args#make_multithreaded_lru
 
-    let lru_lock = Tjr_monad.With_lwt.create_mutex()
+    let lru_lock = lwt_mutex_ops.create_mutex()
 
     let _ = lru_lock
 
@@ -54,6 +54,9 @@ let make_lru (type k v mt_state) (args:(k,v,mt_state)args)
     let set_initial_state s = 
       let lru_state = ref s in
       let with_state f = 
+        (* FIXME don't like this initial binding to lru_lock for
+           efficiency purposes *)
+        lru_lock >>= fun lru_lock -> 
         lwt_mutex_ops.lock lru_lock >>= fun () ->
         f ~state:(!lru_state) ~set_state:(fun lru ->
             lru_state:=lru; return ()) >>= fun a ->
