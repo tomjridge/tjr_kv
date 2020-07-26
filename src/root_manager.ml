@@ -5,7 +5,8 @@ open Kv_intf
 (** Construct as a tuple *)
 let make_1 
     ~monad_ops 
-    ~(blk_ops:'blk blk_ops) 
+    ~(buf_ops:_ buf_ops)
+    ~(blk_ops:_ blk_ops) 
     ~(blk_dev_ops:('blk_id,'blk,'t)blk_dev_ops) 
     ~blk_id 
   = 

@@ -46,7 +46,7 @@ let make_ops
       ~(pcache_ops:('k,'v,'ptr,'kvop_map,'t) pcache_ops)
       ~pcache_blocks_limit 
       ~bt_find
-      ~(bt_handle_detach:('k,'v,'ptr,'kvop_map) detach_info -> (unit,'t)m)
+      ~(bt_handle_detach:('k,'v,'ptr,'kvop_map) Detach_info.t -> (unit,'t)m)
   =
   (* let open Mref_plus in *)
   let ( >>= ) = monad_ops.bind in

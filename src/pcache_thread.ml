@@ -38,7 +38,7 @@ let make_pcache_thread (type k v ls kvop_map)
       mark d2b_ab; 
       event_ops.ev_wait ev
 
-    let bt_handle_detach (detach_info:('k,'v,blk_id,'kvop_map)detach_info) =
+    let bt_handle_detach (detach_info:('k,'v,blk_id,'kvop_map)Detach_info.t) =
       (* Printf.printf "bt_handle_detach start\n%!"; *)
       let kv_ops = detach_info.past_map |> kvop_map_ops.bindings |> List.map snd in
       mark d2b_ca; 
