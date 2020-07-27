@@ -1,12 +1,14 @@
 (** The B-tree worker thread *)
 
-(* open Tjr_monad.With_lwt *)
 open Shared_ctxt
 open Kv_intf
-(* open Kv_intf_v2 *)
 open Kv_config_profilers
+open Root_manager
+
+
 
 let make_btree_thread (type ls) 
+    ~(write_origin:Origin.t -> (unit,t)m)  (* where we write the roots *)
     ~(q_pc_bt:(_,_,_)q_pc_bt)
     ~(map_ops:('k,'v,r,ls,t)map_ops_with_ls)
   : < start_btree_thread: unit -> (unit,t)m >
@@ -76,6 +78,7 @@ let make_btree_thread (type ls)
           "New root pair: pcache_root=%d, bt_root=%d\n%!"
           (B.to_int new_pcache_root)
           (ptr |> B.to_int);
+        write_origin { pcache_root=new_pcache_root; btree_root=ptr } >>= fun () ->
         read_and_dispatch ()
   end)
   in

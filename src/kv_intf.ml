@@ -1,16 +1,20 @@
+(** Main types *)
+
 module Btree_ops = struct
   (* FIXME also include "batch" op *)
 
-  (** The operations supported by the B-tree. NOTE the "sync"
-     operation is used to reveal the current root block. *)
+  (** The operations supported by the B-tree. The B-tree should be
+     uncached. *)
+  (* $(PIPE2SH("""sed -n '/type[ ].*btree_ops = /,/}/p' >GEN.btree_ops.ml_""")) *)
   type ('k,'v,'blk_id,'t) btree_ops = {
-    find: 'k -> ('v option,'t)m;
-    insert: 'k -> 'v -> (unit,'t)m;
-    delete: 'k -> (unit,'t)m;
-    sync: unit -> ('blk_id,'t)m;  
+    find     : 'k -> ('v option,'t)m;
+    insert   : 'k -> 'v -> (unit,'t)m;
+    delete   : 'k -> (unit,'t)m;
+    get_root : unit -> ('blk_id,'t)m;  
   }
-
+  type ('k,'v,'blk_id,'t) t = ('k,'v,'blk_id,'t) btree_ops
 end
+
 
 module Msg_pc_bt = struct
   (** The type of messages sent from the pcache to the B-tree.
@@ -20,10 +24,10 @@ module Msg_pc_bt = struct
       detach operation via a map ie no duplicate keys)
 
   *)
-
   open Kvop
   (* open Blk_id_as_int *)
 
+  (* $(PIPE2SH("""sed -n '/type[ ].*pc_bt_msg = /,/}/p' >GEN.pc_bt_msg.ml_""")) *)
   type ('k,'v,'blk_id,'t) pc_bt_msg = 
     | Find of 'k * ('v option -> (unit,'t) m)
     | Detach of {
@@ -33,23 +37,13 @@ module Msg_pc_bt = struct
 end
 
 module Msg_lru_pc = struct
-  (* open Im_intf *)
-  (* FIXME this should probably be moved to fs_shared *)
-  type ('k,'v,'t) lru_pc_msg
-    = ('k,'v,'t) lru_msg
+  (* $(PIPE2SH("""sed -n '/type[ ].*lru_pc_msg = /,/Evictees/p' >GEN.lru_pc_msg.ml_""")) *)
+  type ('k,'v,'t) lru_pc_msg = ('k,'v,'t) lru_msg
     =  Insert of 'k*'v*(unit -> (unit,'t)m)
     | Delete of 'k*(unit -> (unit,'t)m)
     | Find of 'k * ('v option -> (unit,'t)m)
     | Evictees of ('k * 'v entry) list
 
-end
-
-
-(** {2 Root man} *)
-
-class type ['a,'t] root_man = object
-  method read_roots: unit -> ('a,'t)m
-  method write_roots: 'a -> (unit,'t)m
 end
 
 

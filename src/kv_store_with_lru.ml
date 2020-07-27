@@ -43,32 +43,25 @@ We construct the following...
 
   - root_man, which is responsible for persisting the roots for the B-tree and the pcache
 
+NOTE in reality, we would 
+
 *)
 
-
-(** {2 Code} *)
-
-(* open Tjr_monad.With_lwt *)
-(* open Lwt_aux  (\* provides various msg queues *\) *)
 open Shared_ctxt
 open Kv_intf
-(* open Kv_intf_v2 *)
-(* open Kv_config_runtime *)
-let runtime_config = Kv_config_runtime.config
-(* open Kv_profilers *)
+open Root_manager
 
-
+(** {2 Types} *)
 
 type rt_blk = {
   mutable bt_rt: blk_id;
   mutable pc_hd: blk_id;
-  mutable pc_tl: blk_id
+  mutable pc_tl: blk_id (* FIXME not used? *)
 }
 
 type min_free = { 
   mutable min_free_blk_id: blk_id;
 }
-
 
 (* $(PIPE2SH("""sed -n '/type[ ].*kv_store[ ]/,/^>/p' >GEN.kv_store.ml_""")) *)
 type ('k,'v) kv_store = <
@@ -79,26 +72,63 @@ type ('k,'v) kv_store = <
   pcache_thread : < start_pcache_thread : unit -> (unit, t)m >;
   q_lru_pc      : ('k, 'v, t) q_lru_pc;
   q_pc_bt       : ('k, 'v, t) q_pc_bt;
-  root_man      : (rt_blk, t) root_man; 
+  (* root_man      : (rt_blk, t) root_man;  *)
   rt_blk        : rt_blk 
 >
-(**
-{[
-type ('k,'v) kv_store = <
-  blk_alloc     : (r, t) blk_allocator_ops;
-  btree_thread  : < start_btree_thread : unit -> (unit, t)m >;
-  lru_ops       : ('k, 'v, t) mt_ops;
-  min_free      : min_free;
-  pcache_thread : < start_pcache_thread : unit -> (unit, t)m >;
-  q_lru_pc      : ('k, 'v) q_lru_pc;
-  q_pc_bt       : ('k, 'v) q_pc_bt;
-  root_man      : rt_blk root_man; 
-  rt_blk        : rt_blk 
->
-]}
+(** NOTE the two threads have to be started before various operations
+   can complete; the lru_ops are the operations exposed to the user *)
 
+
+(** {2 Initial disk layout}
+
+b0 is blk 0 etc
+
+- b0 (b_origin): pcache root and btree root
+- b1 (b_empty_pcache): empty pcache
+- b2 (b_empty_btree): empty btree
+- b3 (b_freelist_origin): freelist origin
+- b4 (b_first_free_blk): first free blk
 *)
 
+let b_origin = B.of_int 0 
+
+let b_empty_pcache = B.of_int 1
+
+let b_empty_btree = B.of_int 2 
+
+let b_freelist_origin = B.of_int 3 
+
+let b_first_free_blk = B.of_int 4 
+
+
+
+(** {2 Factory} *)
+
+(* FIXME for general use -- where there are many kv stores -- we want
+   to incorporate a usedlist, and store the usedlist origin with the
+   other origins *)
+
+type ('k,'v,'blk_id,'blk,'t) kv_factory = <
+
+  (* FIXME want barrier and sync as args *)
+  with_:
+    blk_dev_ops:('blk_id,'blk,'t)blk_dev_ops -> 
+    <
+
+      create: unit -> ( ('k,'v)kv_store,'t)m;
+      (** Create an empty kv store, initializing blks etc *)
+
+      restore_from_disk: unit -> ( ('k,'v)kv_store,'t)m;
+      (** Restore from disk, using blk 0 *)
+    >
+>
+
+
+(** {2 Code} *)
+
+let runtime_config = Kv_config_runtime.config
+
+(*
 (* FIXME remove deriving; prefer S' *)
 module type S = sig
   type k[@@deriving bin_io]
@@ -110,35 +140,35 @@ module type S = sig
   val v_size: int
   val r_size: int
 end
-
-(* $(PIPE2SH("""sed -n '/module[ ]type[ ]S/,/^end/p' >GEN.S.ml_""")) *)
-module type S' = sig
-  (* NOTE specialized to shared_ctxt *)
-  type k
-  type v
-  val k_cmp: k -> k -> int
-  val k_mshlr: k bp_mshlr
-  val v_mshlr: v bp_mshlr
-end
-  (* type r = Shared_ctxt.r *)
-  (* val r_mshlr: r bp_mshlr (\* should be in Shared_ctxt *\) *)
-
-
-module Make(S:S') = struct
-  open S
-
-(*  let marshalling_config : (k,v,r) Pcache_intf.marshalling_config = 
-    (module S)
 *)
 
+(* $(PIPE2SH("""sed -n '/module[ ]type[ ]S/,/^end/p' >GEN.S.ml_""")) *)
+module type S = sig
+  type k
+  type v
+
+  val k_cmp   : k -> k -> int
+  val k_mshlr : k bp_mshlr
+  val v_mshlr : v bp_mshlr
+end
+(** NOTE specialized to shared_ctxt *)
+
+
+module Make(S:S) = struct
+  open S
+
+  (** First step is to invoke the relevant functors to construct the
+     btree, pcache and lru *)
+
   module S1 = struct
-      include Shared_ctxt 
-      include S 
-      let r_mshlr = bp_mshlrs#r_mshlr
-      let k_size = let open (val k_mshlr) in max_sz
-      let v_size = let open (val v_mshlr) in max_sz
-      let cs = Tjr_btree.Bin_prot_marshalling.make_constants ~blk_sz ~k_size ~v_size
-    end
+    include Shared_ctxt 
+    include S 
+    let r_mshlr = bp_mshlrs#r_mshlr
+    let k_size = let open (val k_mshlr) in max_sz
+    let v_size = let open (val v_mshlr) in max_sz
+    let cs = Tjr_btree.Bin_prot_marshalling.make_constants ~blk_sz ~k_size ~v_size
+  end
+
   module Btree_ = Tjr_btree.Make_6.Make_v1(S1)
   let btree_factory = Btree_.btree_factory
 
@@ -147,42 +177,41 @@ module Make(S:S') = struct
 
   module Lru_ = Tjr_lru_cache.Make.Make(S1)
 
-  (* type mt_state = Lru_ .mt_state ; now just Lru_.lru  *)
 
+  (** {2 Message queues} *)
+
+  let q_lru_pc : (k,v,_) q_lru_pc = Tjr_mem_queue.With_lwt.make_as_object ()  
+  let q_pc_bt : (k,v,_) q_pc_bt = Tjr_mem_queue.With_lwt.make_as_object ()
+
+
+
+  module With_(W:sig val blk_dev_ops:(blk_id,blk,t)blk_dev_ops end) = struct
+    open W
+
+    (** {2 Root manager} *)
+
+    let root_man = Root_manager.root_managers#for_lwt_ba_buf#with_ ~blk_dev_ops
+
+    let create () = 
+      
+
+    let restore_from_origin (o:Origin.t) = ()
+      
+      
   let make ~blk_dev_ops ~(init0:[`From_disk | `Empty]) = 
     let open (struct
 
-      let b0 = B.of_int 0 (** where we store the rt_blk *)
-
-      let b1 = B.of_int 1 (** where the free list is stored *)
-
-      let b2 = B.of_int 2 (** where the btree empty leaf is initially stored *)
-
-      let b3 = B.of_int 3 (** pc_hd, pc_tl initially *)
-
-      let b4 = B.of_int 4 (** first free block *)
 
 
-      (** {2 Message queues} *)
 
-      let q_lru_pc : (k,v,_) q_lru_pc = Tjr_mem_queue.With_lwt.make_as_object ()  
-      let q_pc_bt : (k,v,_) q_pc_bt = Tjr_mem_queue.With_lwt.make_as_object ()
-
-
-      (** {2 Root manager} *)
-
-      let root_man : (rt_blk,_) root_man = 
-        Root_manager.make_3 ~blk_dev_ops ~blk_id:b0
 
       let init = 
         match init0 with
-        | `From_disk -> 
-          root_man#read_roots () >>= fun rt_blk ->
-          return rt_blk
+        | `From_disk -> root_man#read_origin b0
         | `Empty ->
-          let rt_blk = { bt_rt=b2; pc_hd=b3; pc_tl=b3 } in
-          root_man#write_roots rt_blk >>= fun () ->
-          return rt_blk
+          let origin = Root_manager.{ pcache_root=b3; btree_root=b2 } in
+          root_man#write_origin ~blk_id:b0 ~origin >>= fun () ->
+          return origin
     end)
     in
     init >>= fun rt_blk ->
@@ -191,7 +220,8 @@ module Make(S:S') = struct
       (** {2 Blk allocator} *)
           
       let min_free : (min_free,_) root_man = 
-        Root_manager.make_3 ~blk_dev_ops ~blk_id:b1
+        (* Root_manager.make_3 ~blk_dev_ops ~blk_id:b1 *)
+        failwith "FIXME"
 
       let init = 
         match init0 with

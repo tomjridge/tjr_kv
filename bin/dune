@@ -8,7 +8,7 @@
   -open Tjr_pcache -open Tjr_pcache.Pcache_intf 
   -open Tjr_mem_queue -open Tjr_lru_cache -open Tjr_lru_cache 
   -open Tjr_kv))
-  (libraries tjr_pcache_example tjr_kv lwt.unix tjr_profile))
+  (libraries tjr_pcache tjr_kv lwt.unix tjr_profile))
 
 
 ;  (flags -noassert)

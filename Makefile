@@ -9,7 +9,7 @@ build::
 
 update_generated_doc::
 	cd src && (ocamldoc_pyexpander kv_store_with_lru.ml)
-	cd src && (ocamldoc_pyexpander tjr_kv.t.ml > tjr_kv.ml)
+	cd src && (ocamldoc_pyexpander summary.t.ml > summary.ml)
 
 
 run_tests:
