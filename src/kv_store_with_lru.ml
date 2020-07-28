@@ -53,6 +53,7 @@ open Root_manager
 
 (** {2 Types} *)
 
+(*
 type rt_blk = {
   mutable bt_rt: blk_id;
   mutable pc_hd: blk_id;
@@ -62,18 +63,19 @@ type rt_blk = {
 type min_free = { 
   mutable min_free_blk_id: blk_id;
 }
+*)
 
 (* $(PIPE2SH("""sed -n '/type[ ].*kv_store[ ]/,/^>/p' >GEN.kv_store.ml_""")) *)
 type ('k,'v) kv_store = <
   blk_alloc     : (r, t) blk_allocator_ops;
   btree_thread  : < start_btree_thread : unit -> (unit, t)m >;
   lru_ops       : ('k, 'v, t) mt_ops;
-  min_free      : min_free;
   pcache_thread : < start_pcache_thread : unit -> (unit, t)m >;
   q_lru_pc      : ('k, 'v, t) q_lru_pc;
   q_pc_bt       : ('k, 'v, t) q_pc_bt;
   (* root_man      : (rt_blk, t) root_man;  *)
-  rt_blk        : rt_blk 
+  (* rt_blk        : rt_blk  *)
+  (* min_free      : min_free; *)
 >
 (** NOTE the two threads have to be started before various operations
    can complete; the lru_ops are the operations exposed to the user *)
@@ -190,9 +192,11 @@ module Make(S:S) = struct
 
     (** {2 Root manager} *)
 
-    let root_man = Root_manager.root_managers#for_lwt_ba_buf#with_ ~blk_dev_ops
+    let root_man = Root_manager.root_managers#for_lwt_ba_buf#with_ ~blk_dev_ops    
 
     let create () = 
+      root_man#write_origin ~blk_id:b_origin ~origin:{pcache_root=b_empty_pcache;btree_root=b_empty_btree} >>= fun () -> 
+      pcache_factory
       
 
     let restore_from_origin (o:Origin.t) = ()
