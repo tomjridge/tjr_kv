@@ -48,6 +48,7 @@ end
 
 
 (** {2 Messages} *)
+
 open Blk_id_as_int
 
 type ('k,'v,'t) pc_bt_msg = ('k,'v,blk_id,'t) Msg_pc_bt.pc_bt_msg
@@ -68,101 +69,4 @@ end
 
 
 
-
-
-(*
-module Root_man_ops = struct
-
-  type ('a,'t) root_man = {
-    read_roots: unit -> ('a,'t)m;
-    write_roots: ?sync:bool -> 'a -> (unit,'t)m;
-  }
-
-end
-*)
-
-(*
-module Pmap = struct
-  (** A persistent map is formed from a B-tree and a detachable map
-      (pcache).
-
-      The "root" is a pair of the root for the persistent map and the root
-      for the B-tree.
-
-      When a pmap is constructed, we expect that the implementation requires
-      some way to handle the pcache detach event followed by the B-tree
-      rollup and the creation of the new root pair.
-
-  *)
-
-  type ('k,'v,'t) pmap = {
-    find: 'k -> ('v option,'t) m;
-    insert: 'k -> 'v -> (unit,'t) m;
-    delete: 'k -> (unit,'t)m;
-  }
-end
-*)
-
-(*
-module Syncable_map = struct
-
-  (** {2 Simple syncable map} *)
-
-  (** A syncable map API.
-
-      Sync operations:
-
-      - sync to sync the whole map to disk
-      - ksync to sync a particular key
-      - ks_sync to sync a set of keys
-
-FIXME shouldn't batch use kvop?
-
-  *)
-  type ('k,'v,'ptr,'t) syncable_map = {
-    find: 'k -> ('v option,'t)m;
-    insert: 'k -> 'v -> (unit,'t)m;
-    delete: 'k -> (unit,'t)m;
-    batch: persist_mode -> [ `Delete of 'k | `Insert of ('k*'v) ] list -> (unit,'t)m;
-    sync: unit -> ('ptr,'t)m;
-    ksync: 'k -> ('ptr,'t)m;
-    ks_sync: 'k list -> ('ptr,'t)m
-  }
-
-
-  (** {2 Extended syncable map} *)
-
-  (* open Mt_intf *)
-  include Mt_intf.Persist_mode
-  
-  (** Extended version; includes a "persist mode" (ie "now" or
-     "later") and the sync operations 
-
-FIXME shouldn't batch use kvop?
-
-*)
-  type ('k,'v,'ptr,'t) syncable_map_with_pmode = {
-    find: 'k -> ('v option,'t)m;
-    insert: persist_mode -> 'k -> 'v -> (unit,'t)m;
-    delete: persist_mode -> 'k -> (unit,'t)m;
-    batch: persist_mode -> [ `Delete of 'k | `Insert of ('k*'v) ] list -> (unit,'t)m;
-    sync: unit -> ('ptr,'t)m;
-    ksync: 'k -> ('ptr,'t)m;
-    ks_sync: 'k list -> ('ptr,'t)m
-  }
-  
-end
-*)
-
-(*
-module Msg_btree_rootman = struct
-
-  (** A pair of roots, one for the detachable map, and one for the B-tree *)
-  type 'blk_id msg_btree_rootman = {
-    pcache_root: 'blk_id;
-    btree_root: 'blk_id
-  }
-
-end
-*)
 

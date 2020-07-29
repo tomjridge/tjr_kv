@@ -1,6 +1,6 @@
 open Shared_ctxt
 
-type 'r kv_origin = { pcache_root: 'r; btree_root: 'r }[@@deriving bin_io]
+type 'r kv_origin = { pcache_root: 'r Pl_origin.t; btree_root: 'r }[@@deriving bin_io]
 
 module Origin = struct
   type t = Shared_ctxt.r kv_origin[@@deriving bin_io]
