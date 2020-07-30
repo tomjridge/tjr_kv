@@ -247,7 +247,32 @@ module Make(S:S) = struct
         
         return obj
 
-      let restore () = ()
+      let restore b_origin = 
+        (* origin first *)
+        root_man#read_origin b_origin >>= fun origin -> 
+
+        (* btree *)
+        btree_factory#uncached
+          ~blk_dev_ops ~blk_alloc ~init_btree_root:origin.btree_root |> fun btree_o ->
+
+        (* then pcache; FIXME this could be included in pcache_factory
+           as create blk_id *)        
+        let simple_plist_factory = pcache_factory#simple_plist_factory in
+        let plist_factory = simple_plist_factory#plist_factory in
+        let pl_with = plist_factory#with_blk_dev_ops ~blk_dev_ops ~barrier in
+        pl_with#restore origin.pcache_origin >>= fun created_pl ->
+
+        FIXME at this point, we need to access the plist in its entirety and convert to a pcache; put in pcache_factory
+
+        let plist_ops = created_pl#plist_ops in
+        created_pl#plist_ops.get_origin () >>= fun pl_origin ->
+        let simple_plist_ops = 
+          simple_plist_factory#convert_to_simple_plist ~freelist_ops ~plist_ops in
+        let pc_ref = ref (pcache_factory#empty_pcache b_pcache) in
+        let with_state = with_imperative_ref ~monad_ops pc_ref in
+        let pcache_ops = pcache_factory#plist_to_pcache ~simple_plist_ops ~with_state in
+        
+
 
     end)
     in
