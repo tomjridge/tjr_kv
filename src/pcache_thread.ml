@@ -1,17 +1,37 @@
-(** Pcache worker thread *)
+(** Pcache worker thread, which takes an existing pcache_ops, wraps it
+   using blocks limit, and interfaces with the B-tree *)
 
-open Tjr_monad.With_lwt
-(* open Lwt_aux *)
-open Shared_ctxt
+(* NOTE specific to lwt; necessary? *)
+(* open Tjr_monad.With_lwt *)
+
+(* open Shared_ctxt *)
 open Kv_intf
 open Kv_config_profilers
 
-let make_pcache_thread (type k v ls kvop_map)
+module P = Pvt_pcache_with_blocks_limit
+
+module type S = sig
+  type t
+  val monad_ops : t monad_ops
+  val event_ops : t event_ops
+  val yield     : unit -> (unit,t)m
+  val async     : t async
+end
+
+module Make(S:S) = struct
+  module S = S
+  open S
+
+  let ( >>= ) = monad_ops.bind
+
+  let return = monad_ops.return
+
+  let make_pcache_thread (type k v ls kvop_map blk_id)
     ~(kvop_map_ops:(k,(k,v)kvop,kvop_map)Tjr_map.map_ops)
     ~pcache_blocks_limit
-    ~(pcache_ops:(_,_,_,_,_)pcache_ops)
-    ~(q_lru_pc:(_,_,_)q_lru_pc)
-    ~(q_pc_bt:(_,_,_)q_pc_bt)
+    ~(pcache_ops: _ pcache_ops)
+    ~(q_lru_pc: _ q_lru_pc)
+    ~(q_pc_bt: _ q_pc_bt)
   : < start_pcache_thread: unit -> (unit,t)m > 
   =
   let open (struct
@@ -19,10 +39,14 @@ let make_pcache_thread (type k v ls kvop_map)
     type nonrec pcache_ops = (k,v,blk_id,kvop_map,lwt) pcache_ops
     type nonrec pcache_state = (blk_id,kvop_map) Pcache_intf.pcache_state
 
-    let [d2b_aa   ;d2b_ab   ;d2b_ca   ;d2b_cb   ;pcache_l2d_deq1   ;pcache_l2d_deq2   ;pcache_es] = 
-      ["d2b:aa" ;"d2b:ab" ;"d2b:ca" ;"d2b:cb" ;"pcache:l2d.deq1" ;"pcache:l2d.deq2" ;"pcache_es"] 
+    let file = "pct"
+
+    let [mk1;mk2;mk3;mk4] = 
+      ["1" ;"2" ;"3" ;"4"]
+      |> List.map (fun s -> file^"_"^s)
       |> List.map intern
     [@@warning "-8"]
+
     let mark = pcache_profiler.mark
 
     (** Now we fill in the missing components: [bt_find,
@@ -33,49 +57,51 @@ let make_pcache_thread (type k v ls kvop_map)
     let bt_find = fun k ->
       event_ops.ev_create () >>= fun ev ->
       let callback = fun v -> event_ops.ev_signal ev v in
-      mark d2b_aa; 
+      mark mk1; 
       q_pc_bt#enqueue (Find(k,callback)) >>= fun () ->
-      mark d2b_ab; 
+      mark (-1*mk1); 
       event_ops.ev_wait ev
 
-    let bt_handle_detach (detach_info:('k,'v,blk_id,'kvop_map)Detach_info.t) =
+    let bt_handle_detach (detach_info:('k,'v,'blk_id,'kvop_map)Detach_info.t) =
       (* Printf.printf "bt_handle_detach start\n%!"; *)
       let kv_ops = detach_info.past_map |> kvop_map_ops.bindings |> List.map snd in
-      mark d2b_ca; 
+      mark mk2; 
       q_pc_bt#enqueue
         Msg_pc_bt.(Detach {
             ops=kv_ops;
-            new_pcache_root=detach_info.current_ptr}) >>= fun _ ->
-      mark d2b_cb; 
+            new_pcache_hd_tl=detach_info.current_ptr}) >>= fun _ ->
+      mark (-1*mk2); 
       return ()
 
     let _ = bt_handle_detach
 
-
     let pcache_op_count = ref 0
+
+    (* debug/info *)
     let _ : unit = Stdlib.at_exit (fun () ->
         Printf.printf "pcache op count: %#d (%s)\n" (!pcache_op_count) __FILE__)
 
-    let pcache_thread ~pcache_ops ~yield ~sleep () = 
-      let pcache_ops = 
-        let raw_pcache_ops = pcache_ops in
-        Pcache_with_blocks_limit.make_ops
-          ~monad_ops
-          ~pcache_ops:raw_pcache_ops
-          ~pcache_blocks_limit
-          ~bt_find
-          ~bt_handle_detach
-      in
+    let raw_pcache_ops = pcache_ops
+
+    let pcache_ops = 
+      P.make_ops
+        ~monad_ops
+        ~pcache_ops:raw_pcache_ops
+        ~pcache_blocks_limit
+        ~bt_find
+        ~bt_handle_detach
+
+    let pcache_thread () = 
       let loop_evictees = 
         let rec loop es = 
-          from_lwt(yield ()) >>= fun () ->
+          yield () >>= fun () ->
           (* Printf.printf "pcache_thread, loop_evictees\n%!"; *)
           match es with
           | [] -> return ()
           | (k,e)::es -> 
             (* let open Tjr_lru_cache in *)
             (* let open Mt_intf in *)
-            match (e:v entry) with
+            match (e:v Lru_entry.entry) with
             | Insert { value=v; dirty } -> 
               assert(dirty); (* FIXME? or maybe refine the to_lower msgs *)
               pcache_ops.insert k v >>= fun () ->
@@ -94,11 +120,11 @@ let make_pcache_thread (type k v ls kvop_map)
       let rec read_and_dispatch () =
         (* FIXME do we need to yield if we are simply dequeueing? *)
         (* FIXME why is yield coerced to from_lwt? should be monad-agnostic *)
-        from_lwt(yield ()) >>= fun () ->
+        yield () >>= fun () ->
         (* Printf.printf "pcache_thread read_and_dispatch starts\n%!"; *)
-        mark pcache_l2d_deq1;
+        mark mk3;
         q_lru_pc#dequeue () >>= fun msg ->
-        mark pcache_l2d_deq2;
+        mark (-1*mk3);
         (* Printf.printf "pcache_thread dequeued: %s\n%!" (Lru'.msg2string msg); *)
         (* FIXME the following pause seems to require that the btree
            thread makes progress, but of course it cannot since there
@@ -122,21 +148,19 @@ let make_pcache_thread (type k v ls kvop_map)
           read_and_dispatch ()
         | Evictees es -> 
           pcache_op_count:=!pcache_op_count + List.length es;
-          mark pcache_es;
+          mark mk4;
           loop_evictees es >>= fun () ->
           read_and_dispatch ()
       in
       read_and_dispatch ()
 
-    (* adjust yield so that we don't yield at all.. but perhaps this is a bad idea? *)
-    let yield () = Lwt.(return ())
-
-    (* NOTE currently pcache doesn't sleep at all *)
+    (** NOTE currently pcache doesn't sleep at all *)
                   
-    let start_pcache_thread () : (unit,t)m = 
-        pcache_thread ~pcache_ops ~yield ~sleep ()
+    let start_pcache_thread () : (unit,t)m = pcache_thread ()
   end)
   in
   object method start_pcache_thread=start_pcache_thread end
 
-let _ = make_pcache_thread
+  let _ = make_pcache_thread
+
+end

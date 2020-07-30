@@ -1,5 +1,5 @@
 (** This is a pcache wrapper which automatically detaches after
-   a certain number of blocks *)
+   a certain number of blocks; used by pcache_thread *)
 
 (** fidi = find insert delete insertmany *)
 type ('k,'v,'t) map_fidi_ops = {
