@@ -147,20 +147,15 @@ module Make(S:S) = struct
 
   let return = monad_ops.return
 
-  (** {2 Message queues} *)
-
-  let q_lru_pc : (k,v,_) q_lru_pc = Tjr_mem_queue.With_lwt.make_as_object ()
-
-  let q_pc_bt : (k,v,_) q_pc_bt = Tjr_mem_queue.With_lwt.make_as_object ()
-
   let root_man = root_manager#with_ ~blk_dev_ops
-
 
   let blk_alloc = freelist_ops
 
   module Btree_thread = Btree_thread.Make(S)
 
   module Pcache_thread = Pcache_thread.Make(S)
+
+  let pc_with = pcache_factory#with_ ~blk_dev_ops ~barrier ~freelist_ops
 
 (*
 - (b_origin): pcache origin and btree root
@@ -173,34 +168,27 @@ module Make(S:S) = struct
       let lru_params = params#lru_params 
       let pcache_blocks_limit = params#pcache_blocks_limit
   
-      let create () =
+      let create () : (_ kv_store,_)m =
+
+        (* queues *)
+        let q_lru_pc : (k,v,_) q_lru_pc = Tjr_mem_queue.With_lwt.make_as_object () in
+        let q_pc_bt : (k,v,_) q_pc_bt = Tjr_mem_queue.With_lwt.make_as_object () in
 
         (* btree first *)
         freelist_ops.blk_alloc () >>= fun b_empty_btree ->
         btree_factory#write_empty_leaf ~blk_dev_ops ~blk_id:b_empty_btree >>= fun () ->
         btree_factory#uncached
           ~blk_dev_ops ~blk_alloc ~init_btree_root:b_empty_btree |> fun btree_o ->
-
-        (* then pcache; FIXME this could be included in pcache_factory
-           as create blk_id *)
-        freelist_ops.blk_alloc () >>= fun b_pcache ->
-        let simple_plist_factory = pcache_factory#simple_plist_factory in
-        let plist_factory = simple_plist_factory#plist_factory in
-        let pl_with = plist_factory#with_blk_dev_ops ~blk_dev_ops ~barrier in
-        pl_with#create b_pcache >>= fun created_pl ->
-        let plist_ops = created_pl#plist_ops in
-        created_pl#plist_ops.get_origin () >>= fun pl_origin ->
-        let simple_plist_ops = 
-          simple_plist_factory#convert_to_simple_plist ~freelist_ops ~plist_ops in
-        let pc_ref = ref (pcache_factory#empty_pcache b_pcache) in
-        let with_state = with_imperative_ref ~monad_ops pc_ref in
-        let pcache_ops = pcache_factory#plist_to_pcache ~simple_plist_ops ~with_state in
-
+        
+        (* then pcache *)
+        pc_with#create () >>= fun pcache_ops ->
+        pcache_ops.get_origin () >>= fun pcache_origin ->
+        
         (* then the origin *)
         let open Root_manager in
         freelist_ops.blk_alloc () >>= fun b_origin ->
         let write_origin origin = root_man#write_origin ~blk_id:b_origin ~origin in
-        let origin = { pcache_origin=pl_origin; btree_root=b_empty_btree } in
+        let origin = { pcache_origin; btree_root=b_empty_btree } in
         write_origin origin >>= fun () ->
 
         (* then the lru *)
@@ -244,36 +232,73 @@ module Make(S:S) = struct
           method origin=b_origin
         end
         in
-        
         return obj
 
-      let restore b_origin = 
+
+      let restore b_origin : (_ kv_store,_)m = 
+        (* queues *)
+        let q_lru_pc : (k,v,_) q_lru_pc = Tjr_mem_queue.With_lwt.make_as_object () in
+        let q_pc_bt : (k,v,_) q_pc_bt = Tjr_mem_queue.With_lwt.make_as_object () in
+
         (* origin first *)
         root_man#read_origin b_origin >>= fun origin -> 
+
+        (* then the origin *)
+        let open Root_manager in
+        let write_origin origin = root_man#write_origin ~blk_id:b_origin ~origin in
 
         (* btree *)
         btree_factory#uncached
           ~blk_dev_ops ~blk_alloc ~init_btree_root:origin.btree_root |> fun btree_o ->
 
-        (* then pcache; FIXME this could be included in pcache_factory
-           as create blk_id *)        
-        let simple_plist_factory = pcache_factory#simple_plist_factory in
-        let plist_factory = simple_plist_factory#plist_factory in
-        let pl_with = plist_factory#with_blk_dev_ops ~blk_dev_ops ~barrier in
-        pl_with#restore origin.pcache_origin >>= fun created_pl ->
-
-        FIXME at this point, we need to access the plist in its entirety and convert to a pcache; put in pcache_factory
-
-        let plist_ops = created_pl#plist_ops in
-        created_pl#plist_ops.get_origin () >>= fun pl_origin ->
-        let simple_plist_ops = 
-          simple_plist_factory#convert_to_simple_plist ~freelist_ops ~plist_ops in
-        let pc_ref = ref (pcache_factory#empty_pcache b_pcache) in
-        let with_state = with_imperative_ref ~monad_ops pc_ref in
-        let pcache_ops = pcache_factory#plist_to_pcache ~simple_plist_ops ~with_state in
+        (* then pcache *)
+        pc_with#restore ~hd:origin.pcache_origin.hd >>= fun pcache_ops ->
         
+        (* then lru *)
+        let to_lower msg = q_lru_pc#enqueue msg in
+        let lru_ref = ref @@
+          lru_factory#empty
+            ~max_size:lru_params#max_size
+            ~evict_count:lru_params#evict_count
+        in
+        (* FIXME the lru has to be locked *)
+        with_locked_ref ~monad_ops ~mutex_ops lru_ref >>= fun with_state ->
+        let lru_ops = lru_factory#make_ops ~with_state ~to_lower in
 
 
+
+        (* then the btree thread and the pcache thread *)
+        let btree_thread = Btree_thread.make_btree_thread
+            ~write_origin
+            ~q_pc_bt
+            ~map_ops_bt:btree_o#map_ops_with_ls
+            ~sync_bt:(fun () ->
+                (* NOTE we need to sync the blk_dev *)
+                sync () >>= fun () ->
+                btree_o#get_btree_root ())
+        in
+
+        let pcache_thread =
+          Pcache_thread.make_pcache_thread
+            ~kvop_map_ops
+            ~pcache_blocks_limit
+            ~pcache_ops
+            ~q_lru_pc
+            ~q_pc_bt
+        in
+        let _ = pcache_thread in
+
+        let obj : _ kv_store = object
+          method btree_thread=btree_thread
+          method pcache_thread=pcache_thread
+          method lru_ops=lru_ops
+          method q_lru_pc=q_lru_pc
+          method q_pc_bt=q_pc_bt
+          method origin=b_origin
+        end
+        in
+        return obj
+       
     end)
     in
     object
