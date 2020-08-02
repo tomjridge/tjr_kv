@@ -45,58 +45,14 @@ We construct the following...
 
 *)
 
-open Shared_ctxt
 open Kv_intf
-(* open Root_manager *)
-
-(** {2 Types} *)
-
-(* $(PIPE2SH("""sed -n '/type[ ].*kv_store[ ]/,/^>/p' >GEN.kv_store.ml_""")) *)
-type ('k,'v,'blk_id) kv_store = <
-  btree_thread  : < start_btree_thread : unit -> (unit, t)m >;
-  lru_ops       : ('k, 'v, t) mt_ops;
-  pcache_thread : < start_pcache_thread : unit -> (unit, t)m >;
-  q_lru_pc      : ('k, 'v, t) q_lru_pc;
-  q_pc_bt       : ('k, 'v, t) q_pc_bt;
-  origin        : 'blk_id;
->
-(** NOTE the two threads have to be started before various operations
-   can complete; the lru_ops are the operations exposed to the user *)
-  (* root_man      : (rt_blk, t) root_man;  *)
-  (* rt_blk        : rt_blk  *)
-  (* min_free      : min_free; *)
-  (* blk_alloc     : (r, t) blk_allocator_ops; *)
-
-
-
-
-(** {2 Factory} *)
-
-(* FIXME for general use -- where there are many kv stores -- we want
-   to incorporate a usedlist, and store the usedlist origin with the
-   other origins *)
-
-type ('k,'v,'blk_id,'blk,'buf,'kvop_map,'t) kv_factory = <
-
-  pcache_factory : ('k,'v,'blk_id,'buf,'kvop_map,'t) pcache_factory;
-
-  (* FIXME want barrier and sync as args *)
-  with_:
-    blk_dev_ops:('blk_id,'blk,'t)blk_dev_ops ->
-    freelist_ops : ('blk_id,'t)Shared_freelist.freelist_ops ->
-    <
-      create: unit -> ( ('k,'v,'blk_id)kv_store,'t)m;
-      (** Create an empty kv store, initializing blks etc *)
-      
-      restore: blk_id -> ( ('k,'v,'blk_id)kv_store,'t)m;
-      (** Restore from disk *)
-    >
->
-
-
-(** {2 Code} *)
 
 let runtime_config = Kv_config_runtime.config
+
+type params = < 
+  lru_params : < evict_count : int; max_size : int;>;
+  pcache_blocks_limit : int; 
+>
 
 module type S = sig
   type t = lwt
@@ -125,16 +81,11 @@ module type S = sig
   type wbc
   val btree_factory  : (k,v,r,t,leaf,node,dnode,ls,blk,wbc) btree_factory
 
-  val freelist_ops   : (blk_id,t) freelist_ops_af
-
   type lru
   val lru_factory    : (k,v,lru,t) lru_factory
 
-  val blk_dev_ops    : (blk_id,blk,t) blk_dev_ops
-  val barrier        : unit -> (unit,t)m
-  val sync           : unit -> (unit,t)m
-
   val root_manager   : (blk_id,blk,t) Root_manager.root_manager
+
 end
 
 module Make(S:S) = struct
@@ -147,163 +98,295 @@ module Make(S:S) = struct
 
   let return = monad_ops.return
 
-  let root_man = root_manager#with_ ~blk_dev_ops
-
-  let blk_alloc = freelist_ops
-
   module Btree_thread = Btree_thread.Make(S)
 
   module Pcache_thread = Pcache_thread.Make(S)
 
-  let pc_with = pcache_factory#with_ ~blk_dev_ops ~barrier ~freelist_ops
+  module With_(A:sig
+      val blk_dev_ops    : (blk_id,blk,t) blk_dev_ops
+      val barrier        : unit -> (unit,t)m
+      val sync           : unit -> (unit,t)m
+      val freelist_ops   : (blk_id,t) freelist_ops_af
+      val params         : params
+    end) 
+  = struct
+    open A
+
+    let root_man = root_manager#with_ ~blk_dev_ops
+
+    let blk_alloc = freelist_ops
+
+    let pc_with = pcache_factory#with_ ~blk_dev_ops ~barrier ~freelist_ops
 
 (*
 - (b_origin): pcache origin and btree root
 - (b_pcache): empty pcache
 - (b_empty_btree): empty btree
 *)
+    let lru_params = params#lru_params 
+    let pcache_blocks_limit = params#pcache_blocks_limit
 
-  let with_ ~params = 
-    let open (struct
-      let lru_params = params#lru_params 
-      let pcache_blocks_limit = params#pcache_blocks_limit
-  
-      let create () : (_ kv_store,_)m =
+    let create () : (_ kv_store,_)m =
 
-        (* queues *)
-        let q_lru_pc : (k,v,_) q_lru_pc = Tjr_mem_queue.With_lwt.make_as_object () in
-        let q_pc_bt : (k,v,_) q_pc_bt = Tjr_mem_queue.With_lwt.make_as_object () in
+      (* queues *)
+      let q_lru_pc : (k,v,_) q_lru_pc = Tjr_mem_queue.With_lwt.make_as_object () in
+      let q_pc_bt : (k,v,_) q_pc_bt = Tjr_mem_queue.With_lwt.make_as_object () in
 
-        (* btree first *)
-        freelist_ops.blk_alloc () >>= fun b_empty_btree ->
-        btree_factory#write_empty_leaf ~blk_dev_ops ~blk_id:b_empty_btree >>= fun () ->
-        btree_factory#uncached
-          ~blk_dev_ops ~blk_alloc ~init_btree_root:b_empty_btree |> fun btree_o ->
-        
-        (* then pcache *)
-        pc_with#create () >>= fun pcache_ops ->
-        pcache_ops.get_origin () >>= fun pcache_origin ->
-        
-        (* then the origin *)
-        let open Root_manager in
-        freelist_ops.blk_alloc () >>= fun b_origin ->
-        let write_origin origin = root_man#write_origin ~blk_id:b_origin ~origin in
-        let origin = { pcache_origin; btree_root=b_empty_btree } in
-        write_origin origin >>= fun () ->
+      (* btree first *)
+      freelist_ops.blk_alloc () >>= fun b_empty_btree ->
+      btree_factory#write_empty_leaf ~blk_dev_ops ~blk_id:b_empty_btree >>= fun () ->
+      btree_factory#uncached
+        ~blk_dev_ops ~blk_alloc ~init_btree_root:b_empty_btree |> fun btree_o ->
 
-        (* then the lru *)
-        let to_lower msg = q_lru_pc#enqueue msg in
-        let lru_ref = ref @@
-          lru_factory#empty
-            ~max_size:lru_params#max_size
-            ~evict_count:lru_params#evict_count
-        in
-        (* FIXME the lru has to be locked *)
-        with_locked_ref ~monad_ops ~mutex_ops lru_ref >>= fun with_state ->
-        let lru_ops = lru_factory#make_ops ~with_state ~to_lower in
+      (* then pcache *)
+      pc_with#create () >>= fun pcache_ops ->
+      pcache_ops.get_origin () >>= fun pcache_origin ->
 
-        (* then the btree thread and the pcache thread *)
-        let btree_thread = Btree_thread.make_btree_thread
-            ~write_origin
-            ~q_pc_bt
-            ~map_ops_bt:btree_o#map_ops_with_ls
-            ~sync_bt:(fun () ->
-                (* NOTE we need to sync the blk_dev *)
-                sync () >>= fun () ->
-                btree_o#get_btree_root ())
-        in
+      (* then the origin *)
+      let open Root_manager in
+      freelist_ops.blk_alloc () >>= fun b_origin ->
+      let write_origin origin = root_man#write_origin ~blk_id:b_origin ~origin in
+      let origin = { pcache_origin; btree_root=b_empty_btree } in
+      write_origin origin >>= fun () ->
 
-        let pcache_thread =
-          Pcache_thread.make_pcache_thread
-            ~kvop_map_ops
-            ~pcache_blocks_limit
-            ~pcache_ops
-            ~q_lru_pc
-            ~q_pc_bt
-        in
-        let _ = pcache_thread in
+      (* then the lru *)
+      let to_lower msg = q_lru_pc#enqueue msg in
+      let lru_ref = ref @@
+        lru_factory#empty
+          ~max_size:lru_params#max_size
+          ~evict_count:lru_params#evict_count
+      in
+      (* FIXME the lru has to be locked *)
+      with_locked_ref ~monad_ops ~mutex_ops lru_ref >>= fun with_state ->
+      let lru_ops = lru_factory#make_ops ~with_state ~to_lower in
 
-        let obj : _ kv_store = object
-          method btree_thread=btree_thread
-          method pcache_thread=pcache_thread
-          method lru_ops=lru_ops
-          method q_lru_pc=q_lru_pc
-          method q_pc_bt=q_pc_bt
-          method origin=b_origin
-        end
-        in
-        return obj
+      (* then the btree thread and the pcache thread *)
+      let btree_thread = Btree_thread.make_btree_thread
+          ~write_origin
+          ~q_pc_bt
+          ~map_ops_bt:btree_o#map_ops_with_ls
+          ~sync_bt:(fun () ->
+              (* NOTE we need to sync the blk_dev *)
+              sync () >>= fun () ->
+              btree_o#get_btree_root ())
+      in
+
+      let pcache_thread =
+        Pcache_thread.make_pcache_thread
+          ~kvop_map_ops
+          ~pcache_blocks_limit
+          ~pcache_ops
+          ~q_lru_pc
+          ~q_pc_bt
+      in
+      let _ = pcache_thread in
+
+      let obj : _ kv_store = object
+        method btree_thread=btree_thread
+        method pcache_thread=pcache_thread
+        method lru_ops=lru_ops
+        method q_lru_pc=q_lru_pc
+        method q_pc_bt=q_pc_bt
+        method origin=b_origin
+      end
+      in
+      return obj
 
 
-      let restore b_origin : (_ kv_store,_)m = 
-        (* queues *)
-        let q_lru_pc : (k,v,_) q_lru_pc = Tjr_mem_queue.With_lwt.make_as_object () in
-        let q_pc_bt : (k,v,_) q_pc_bt = Tjr_mem_queue.With_lwt.make_as_object () in
+    let restore b_origin : (_ kv_store,_)m = 
+      (* queues *)
+      let q_lru_pc : (k,v,_) q_lru_pc = Tjr_mem_queue.With_lwt.make_as_object () in
+      let q_pc_bt : (k,v,_) q_pc_bt = Tjr_mem_queue.With_lwt.make_as_object () in
 
-        (* origin first *)
-        root_man#read_origin b_origin >>= fun origin -> 
+      (* origin first *)
+      root_man#read_origin b_origin >>= fun origin -> 
 
-        (* then the origin *)
-        let open Root_manager in
-        let write_origin origin = root_man#write_origin ~blk_id:b_origin ~origin in
+      (* then the origin *)
+      let open Root_manager in
+      let write_origin origin = root_man#write_origin ~blk_id:b_origin ~origin in
 
-        (* btree *)
-        btree_factory#uncached
-          ~blk_dev_ops ~blk_alloc ~init_btree_root:origin.btree_root |> fun btree_o ->
+      (* btree *)
+      btree_factory#uncached
+        ~blk_dev_ops ~blk_alloc ~init_btree_root:origin.btree_root |> fun btree_o ->
 
-        (* then pcache *)
-        pc_with#restore ~hd:origin.pcache_origin.hd >>= fun pcache_ops ->
-        
-        (* then lru *)
-        let to_lower msg = q_lru_pc#enqueue msg in
-        let lru_ref = ref @@
-          lru_factory#empty
-            ~max_size:lru_params#max_size
-            ~evict_count:lru_params#evict_count
-        in
-        (* FIXME the lru has to be locked *)
-        with_locked_ref ~monad_ops ~mutex_ops lru_ref >>= fun with_state ->
-        let lru_ops = lru_factory#make_ops ~with_state ~to_lower in
+      (* then pcache *)
+      pc_with#restore ~hd:origin.pcache_origin.hd >>= fun pcache_ops ->
+
+      (* then lru *)
+      let to_lower msg = q_lru_pc#enqueue msg in
+      let lru_ref = ref @@
+        lru_factory#empty
+          ~max_size:lru_params#max_size
+          ~evict_count:lru_params#evict_count
+      in
+      (* FIXME the lru has to be locked *)
+      with_locked_ref ~monad_ops ~mutex_ops lru_ref >>= fun with_state ->
+      let lru_ops = lru_factory#make_ops ~with_state ~to_lower in
 
 
 
-        (* then the btree thread and the pcache thread *)
-        let btree_thread = Btree_thread.make_btree_thread
-            ~write_origin
-            ~q_pc_bt
-            ~map_ops_bt:btree_o#map_ops_with_ls
-            ~sync_bt:(fun () ->
-                (* NOTE we need to sync the blk_dev *)
-                sync () >>= fun () ->
-                btree_o#get_btree_root ())
-        in
+      (* then the btree thread and the pcache thread *)
+      let btree_thread = Btree_thread.make_btree_thread
+          ~write_origin
+          ~q_pc_bt
+          ~map_ops_bt:btree_o#map_ops_with_ls
+          ~sync_bt:(fun () ->
+              (* NOTE we need to sync the blk_dev *)
+              sync () >>= fun () ->
+              btree_o#get_btree_root ())
+      in
 
-        let pcache_thread =
-          Pcache_thread.make_pcache_thread
-            ~kvop_map_ops
-            ~pcache_blocks_limit
-            ~pcache_ops
-            ~q_lru_pc
-            ~q_pc_bt
-        in
-        let _ = pcache_thread in
+      let pcache_thread =
+        Pcache_thread.make_pcache_thread
+          ~kvop_map_ops
+          ~pcache_blocks_limit
+          ~pcache_ops
+          ~q_lru_pc
+          ~q_pc_bt
+      in
+      let _ = pcache_thread in
 
-        let obj : _ kv_store = object
-          method btree_thread=btree_thread
-          method pcache_thread=pcache_thread
-          method lru_ops=lru_ops
-          method q_lru_pc=q_lru_pc
-          method q_pc_bt=q_pc_bt
-          method origin=b_origin
-        end
-        in
-        return obj
-       
-    end)
-    in
-    object
+      let obj : _ kv_store = object
+        method btree_thread=btree_thread
+        method pcache_thread=pcache_thread
+        method lru_ops=lru_ops
+        method q_lru_pc=q_lru_pc
+        method q_pc_bt=q_pc_bt
+        method origin=b_origin
+      end
+      in
+      return obj
+
+    let obj = object
       method create=create
       method restore=restore
     end
+
+  end (* With_ *)
+  
+
+  let with_
+    ~blk_dev_ops
+    ~barrier
+    ~sync
+    ~freelist_ops
+    ~params
+    =
+    let open (struct
+      module A = With_(struct
+          let blk_dev_ops=blk_dev_ops
+          let barrier=barrier
+          let sync=sync
+          let freelist_ops=freelist_ops
+          let params=params
+        end)
+    end)
+    in
+    A.obj
+
+  let kv_factory : _ kv_factory = object
+    method with_=with_
+  end
+
+end (* Make *)
+
+
+module Examples = struct
+  module Int_int = struct
+    module S1 = Shared_ctxt
+    module S2 = struct
+      include S1
+      type k=int
+      type v=int
+
+      type kvop_map = Tjr_pcache.Make.Examples.Int_int.kvop_map
+      let pcache_factory = Tjr_pcache.pcache_examples#for_int_int
+
+      type node = Tjr_btree.Make_6.Examples.Int_int.node
+      type leaf = Tjr_btree.Make_6.Examples.Int_int.leaf
+      type dnode = (node, leaf) Isa_btree.dnode
+      type ls = Tjr_btree.Make_6.Examples.Int_int.ls
+      type blk = Tjr_fs_shared.ba_buf
+      type wbc = Tjr_btree.Make_6.Examples.Int_int.wbc
+      let btree_factory = Tjr_btree.btree_examples#int_int_factory
+
+      type lru = Tjr_lru_cache.Lru_examples.Int_int.lru
+      let lru_factory = Tjr_lru_cache.Lru_examples.Int_int.lru_factory
+                          
+      let root_manager = Root_manager.root_managers#for_lwt_ba_buf
+    end
+
+    module M = Make(S2)
+    let kv_factory = M.kv_factory
+  end
+end
+
+
+module Test() = struct
+  (* open Tjr_monad.With_lwt *)
+  open Shared_ctxt
+  
+  let kv_factory = Examples.Int_int.kv_factory
+
+  let test () = 
+    blk_devs#lwt_open_file ~fn:"kv.store" ~create:true ~trunc:true >>= fun bd ->
+    let blk_dev_ops=bd#blk_dev_ops in
+    (* FIXME we should just have create and restore taking a fn *)
+    shared_freelist#with_ ~fn:"freelist.store" |> fun fl -> 
+    fl#create ~min_free:(B.of_int 0) >>= fun fl -> 
+    let freelist_ops = fl#freelist_ops in
+    let _ = freelist_ops in
+    kv_factory#with_ 
+      ~blk_dev_ops 
+      ~barrier:(fun () -> return ()) 
+      ~sync:(fun () -> return ())
+      (* $(FIXME("""standardize on blk_alloc and blk_free; alter shared_freelist """)) *)
+      ~freelist_ops:{blk_alloc=freelist_ops.Shared_freelist.alloc;blk_free=freelist_ops.free}
+      ~params:(object 
+        method lru_params=object method evict_count=10 method max_size=100 end 
+        method pcache_blocks_limit=4
+      end)
+    |> fun kv -> 
+    kv#create () >>= fun kv_store -> 
+    Printf.printf "%s: created from disk\n%!" __FILE__;
+    let lru_ops = kv_store#lru_ops in
+    let { mt_find; mt_insert; mt_delete; mt_sync_all_keys; _ } = lru_ops in
+    (* NOTE kv_store.origin is the blk to restore from *)
+    (* $(FIXME("""start threads automatically rather than requiring explicit start""")) *)
+    kv_store#btree_thread#start_btree_thread () >>= fun () ->
+    kv_store#pcache_thread#start_pcache_thread () >>= fun () ->
+    Printf.printf "%s: started threads\n%!" __FILE__;
+    (* perform some operations *)
+    0 |> iter_k (fun ~k n ->
+        match n >= 1000 with
+        | true -> return ()
+        | false -> 
+          Printf.printf "%s: inserting %d\n%!" __FILE__ n;
+          (* FIXME mt_insert should take an optional persist mode *)
+          mt_insert Persist_now n (2*n) >>= fun () ->
+          k (n+1)) >>= fun () ->
+    (* FIXME need some mechanism to free up all resources for KV store
+       (GC may not be effective?) *)
+    mt_sync_all_keys () >>= fun () ->
+    (* FIXME add a sync to kv which calls the Lru, pcache (not btree- it is uncached) *)
+    fl#close () >>= fun () ->
+    (* FIXME expose pcache ops and btree ops in kv_store *)
+    (* bd#close () >>= fun () -> *)
+    let blk_id = kv_store#origin in
+    kv#restore blk_id >>= fun kv2 -> 
+    kv2#btree_thread#start_btree_thread () >>= fun () ->
+    kv2#pcache_thread#start_pcache_thread () >>= fun () ->
+    Printf.printf "%s: restored from disk\n%!" __FILE__;
+    (* FIXME check the contents of the restored store *)
+    0 |> iter_k (fun ~k n -> 
+        match n >= 1000 with
+        | true -> return ()
+        | false -> 
+          (* FIXME mt_insert should take an optional persist mode *)
+          kv2#lru_ops.mt_find n >>= fun v ->
+          assert(dest_Some v=2*n);
+          k (n+1)) >>= fun () ->
+    bd#close () >>= fun () -> 
+    return ()
 
 end

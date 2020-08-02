@@ -82,3 +82,48 @@ end
 
 
 
+
+(** {2 Factory} *)
+
+(* FIXME for general use -- where there are many kv stores -- we want
+   to incorporate a usedlist, and store the usedlist origin with the
+   other origins *)
+
+
+(* $(PIPE2SH("""sed -n '/type[ ].*kv_store[ ]/,/^>/p' >GEN.kv_store.ml_""")) *)
+type ('k,'v,'blk_id,'t) kv_store = <
+  btree_thread  : < start_btree_thread : unit -> (unit, 't)m >;
+  lru_ops       : ('k, 'v, 't) mt_ops;
+  pcache_thread : < start_pcache_thread : unit -> (unit, 't)m >;
+  q_lru_pc      : ('k, 'v, 't) q_lru_pc;
+  q_pc_bt       : ('k, 'v, 't) q_pc_bt;
+  origin        : 'blk_id;
+>
+(** NOTE the two threads have to be started before various operations
+   can complete; the lru_ops are the operations exposed to the user *)
+  (* root_man      : (rt_blk, t) root_man;  *)
+  (* rt_blk        : rt_blk  *)
+  (* min_free      : min_free; *)
+  (* blk_alloc     : (r, t) blk_allocator_ops; *)
+
+
+type ('k,'v,'blk_id,'blk,'t,'params) kv_factory = <
+  (* pcache_factory : ('k,'v,'blk_id,'blk,'kvop_map,'t) pcache_factory; *)
+
+  with_:
+    blk_dev_ops  : ('blk_id,'blk,'t)blk_dev_ops ->
+    barrier      : (unit -> (unit,'t)m) ->
+    sync         : (unit -> (unit,'t)m) -> 
+    freelist_ops : ('blk_id,'t)freelist_ops_af ->
+    params       : 'params -> 
+    <
+      create: unit -> ( ('k,'v,'blk_id,'t)kv_store,'t)m;
+      (** Create an empty kv store, initializing blks etc *)
+      
+      restore: blk_id -> ( ('k,'v,'blk_id,'t)kv_store,'t)m;
+      (** Restore from disk *)
+    >
+>
+
+
+
