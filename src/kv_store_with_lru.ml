@@ -325,10 +325,10 @@ module Test() = struct
 
   let params = 
     object 
-      method lru_params=object method evict_count=10 method max_size=100 end 
-      method pcache_blocks_limit=4
+      method lru_params=object method evict_count=10 method max_size=20 end 
+      method pcache_blocks_limit=2
     end
-  let count = 2000
+  let count = 1000
 
   let test () = 
     blk_devs#lwt_open_file ~fn:"kv.store" ~create:true ~trunc:true >>= fun bd ->

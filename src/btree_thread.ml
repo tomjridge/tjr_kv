@@ -37,10 +37,15 @@ module Make(S:S) = struct
 
       open Msg_pc_bt
 
-      let btree_op_count = ref 0
-
+      type btree_op_count = {
+        mutable find: int;
+        mutable detach: int;
+        mutable detach_ops: int;
+      }
+      let btree_op_count = { find=0; detach=0; detach_ops=0}
+      
       let _ : unit = Stdlib.at_exit (fun () ->
-          Printf.printf "B-tree op count: %#d (%s)\n" (!btree_op_count) __FILE__)
+          Printf.printf "B-tree op count: find=%#d detach=%#d detach_ops=%#d (%s)\n" btree_op_count.find btree_op_count.detach btree_op_count.detach_ops __FILE__)
 
       let Map_ops_with_ls.{ find; insert; delete; _ } = map_ops_bt
 
@@ -50,7 +55,7 @@ module Make(S:S) = struct
         match ops with
         | [] -> return ()
         | op::ops -> 
-          incr btree_op_count;
+          btree_op_count.detach_ops <- btree_op_count.detach_ops + 1;
           (* FIXME more efficient if we dealt with multiple ops eg
              insert_many *)
           (* NOTE the following do not have callbacks, because they come
@@ -75,10 +80,12 @@ module Make(S:S) = struct
         (* Printf.printf "btree_thread dequeued: %s\n%!" "-"; *)
         match msg with
         | Find(k,callback) ->
+          btree_op_count.find <- btree_op_count.find + 1;
           find ~k >>= fun v ->
           async(fun () -> callback v) >>= fun () ->
           read_and_dispatch ()
         | Detach { ops; new_pcache_hd_tl } ->
+          btree_op_count.detach <- btree_op_count.detach + 1;
           loop ops >>= fun () ->
           (* FIXME what to do with the new root? maybe nothing for the
              time being? *)
