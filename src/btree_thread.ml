@@ -95,7 +95,7 @@ module Make(S:S) = struct
     end)
     in
     object
-      method start_btree_thread = read_and_dispatch
+      method start_btree_thread () = async read_and_dispatch
     end
 
   let _ = make_btree_thread

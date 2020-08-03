@@ -63,7 +63,7 @@ let make_ops
     match n >= pcache_blocks_limit with
     | false -> return `No_roll_up_needed
     | true -> 
-      (* Printf.printf "pcache_thread, maybe_roll_up\n%!"; *)
+      Printf.printf "pcache_thread, maybe_roll_up\n%!";
       pc.detach () >>= fun detach_result ->
       bt_handle_detach detach_result >>= fun () ->
       return `Ok

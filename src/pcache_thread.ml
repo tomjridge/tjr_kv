@@ -32,7 +32,7 @@ module Make(S:S) = struct
     ~(pcache_ops: _ pcache_ops)
     ~(q_lru_pc: _ q_lru_pc)
     ~(q_pc_bt: _ q_pc_bt)
-  : < start_pcache_thread: unit -> (unit,t)m > 
+    : < start_pcache_thread: unit -> (unit,t)m > 
   =
   let open (struct
 
@@ -63,7 +63,7 @@ module Make(S:S) = struct
       event_ops.ev_wait ev
 
     let bt_handle_detach (detach_info:('k,'v,'blk_id,'kvop_map)Detach_info.t) =
-      (* Printf.printf "bt_handle_detach start\n%!"; *)
+      Printf.printf "bt_handle_detach start\n%!";
       let kv_ops = detach_info.past_map |> kvop_map_ops.bindings |> List.map snd in
       mark mk2; 
       q_pc_bt#enqueue
@@ -98,22 +98,14 @@ module Make(S:S) = struct
           (* Printf.printf "pcache_thread, loop_evictees\n%!"; *)
           match es with
           | [] -> return ()
-          | (k,e)::es -> 
-            (* let open Tjr_lru_cache in *)
-            (* let open Mt_intf in *)
-            match (e:v Lru_entry.entry) with
-            | Insert { value=v; dirty } -> 
-              assert(dirty); (* FIXME? or maybe refine the to_lower msgs *)
+          | kvop::es -> 
+            Kvop.(match kvop with
+            | Insert (k,v) -> 
               pcache_ops.insert k v >>= fun () ->
               loop es
-            | Delete _ -> 
+            | Delete k -> 
               pcache_ops.delete k >>= fun () ->
-              loop es
-            | Lower _ -> 
-              Printf.printf "WARNING!!! unexpected evictee: Lower\n%!"; 
-              assert(false) (* should never happen FIXME? *)
-              (* loop es *)
-              (* FIXME perhaps define a restricted type *)
+              loop es)
         in
         loop
       in
@@ -156,10 +148,13 @@ module Make(S:S) = struct
 
     (** NOTE currently pcache doesn't sleep at all *)
                   
-    let start_pcache_thread () : (unit,t)m = pcache_thread ()
+    let start_pcache_thread () : (unit,t)m = async (fun () -> pcache_thread ())
   end)
   in
-  object method start_pcache_thread=start_pcache_thread end
+  object 
+    (* method pcache_ops=pcache_ops *)
+    method start_pcache_thread=start_pcache_thread 
+  end
 
   let _ = make_pcache_thread
 

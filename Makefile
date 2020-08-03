@@ -14,7 +14,7 @@ update_generated_doc::
 
 run_tests:
 #	$(DUNE) exec bin/test.exe
-	$(DUNE) exec bin/tjr_kv_test.exe
+	OCAMLRUNPARAM=b $(DUNE) exec bin/tjr_kv_test.exe
 
 # for auto-completion of Makefile target
 clean::

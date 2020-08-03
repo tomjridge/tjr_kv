@@ -46,7 +46,7 @@ module Msg_lru_pc = struct
       | Insert of 'k*'v*(unit -> (unit,'t)m)
       | Delete of 'k*(unit -> (unit,'t)m)
       | Find of 'k * ('v option -> (unit,'t)m)
-      | Evictees of ('k * 'v Lru_entry.entry) list
+      | Evictees of ('k,'v)kvop list
             
     (** Debug for int,int *)
     let msg2string = 
@@ -91,13 +91,15 @@ end
 
 
 (* $(PIPE2SH("""sed -n '/type[ ].*kv_store[ ]/,/^>/p' >GEN.kv_store.ml_""")) *)
-type ('k,'v,'blk_id,'t) kv_store = <
+type ('k,'v,'blk_id,'t,'kvop_map) kv_store = <
   btree_thread  : < start_btree_thread : unit -> (unit, 't)m >;
   lru_ops       : ('k, 'v, 't) mt_ops;
   pcache_thread : < start_pcache_thread : unit -> (unit, 't)m >;
+  pcache_ops    : ('k,'v,'blk_id,'kvop_map,'t)pcache_ops;
   q_lru_pc      : ('k, 'v, 't) q_lru_pc;
   q_pc_bt       : ('k, 'v, 't) q_pc_bt;
   origin        : 'blk_id;
+  (* write_origin  : unit -> (unit,'t)m; *)
 >
 (** NOTE the two threads have to be started before various operations
    can complete; the lru_ops are the operations exposed to the user *)
@@ -107,8 +109,10 @@ type ('k,'v,'blk_id,'t) kv_store = <
   (* blk_alloc     : (r, t) blk_allocator_ops; *)
 
 
-type ('k,'v,'blk_id,'blk,'t,'params) kv_factory = <
+type ('k,'v,'blk_id,'blk,'t,'params,'kvop_map) kv_factory = <
   (* pcache_factory : ('k,'v,'blk_id,'blk,'kvop_map,'t) pcache_factory; *)
+
+  (* FIXME add origin writing *)
 
   with_:
     blk_dev_ops  : ('blk_id,'blk,'t)blk_dev_ops ->
@@ -117,10 +121,10 @@ type ('k,'v,'blk_id,'blk,'t,'params) kv_factory = <
     freelist_ops : ('blk_id,'t)freelist_ops_af ->
     params       : 'params -> 
     <
-      create: unit -> ( ('k,'v,'blk_id,'t)kv_store,'t)m;
+      create: unit -> ( ('k,'v,'blk_id,'t,'kvop_map)kv_store,'t)m;
       (** Create an empty kv store, initializing blks etc *)
       
-      restore: blk_id -> ( ('k,'v,'blk_id,'t)kv_store,'t)m;
+      restore: blk_id -> ( ('k,'v,'blk_id,'t,'kvop_map)kv_store,'t)m;
       (** Restore from disk *)
     >
 >
