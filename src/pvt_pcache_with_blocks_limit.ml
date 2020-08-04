@@ -1,6 +1,9 @@
 (** This is a pcache wrapper which automatically detaches after
    a certain number of blocks; used by pcache_thread *)
 
+(* $(CONFIG("pvt_pcache_with_blocks_limit.ml: dont_log")) *)
+let dont_log = true
+
 (** fidi = find insert delete insertmany *)
 type ('k,'v,'t) map_fidi_ops = {
   find        : 'k -> ('v option,'t) m;
@@ -63,7 +66,8 @@ let make_ops
     match n >= pcache_blocks_limit with
     | false -> return `No_roll_up_needed
     | true -> 
-      Printf.printf "pcache_thread, maybe_roll_up\n%!";
+      assert(dont_log || (
+          Printf.printf "%s: pcache_thread, maybe_roll_up\n%!" __FILE__; true));
       pc.detach () >>= fun detach_result ->
       bt_handle_detach detach_result >>= fun () ->
       return `Ok

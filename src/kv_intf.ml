@@ -43,10 +43,11 @@ module Msg_lru_pc = struct
   (* $(PIPE2SH("""sed -n '/type[ ].*lru_pc_msg = /,/Evictees/p' >GEN.lru_pc_msg.ml_""")) *)
   type ('k,'v,'t) lru_pc_msg = ('k,'v,'t) lru_msg
     =  
-      | Insert of 'k*'v*(unit -> (unit,'t)m)
-      | Delete of 'k*(unit -> (unit,'t)m)
-      | Find of 'k * ('v option -> (unit,'t)m)
+      | Insert   of 'k*'v*(unit -> (unit,'t)m)
+      | Delete   of 'k*(unit -> (unit,'t)m)
+      | Find     of 'k * ('v option -> (unit,'t)m)
       | Evictees of ('k,'v)kvop list
+      | Sync     of (unit -> (unit,'t)m)
             
     (** Debug for int,int *)
     let msg2string = 
@@ -55,6 +56,7 @@ module Msg_lru_pc = struct
       | Delete(k,_) -> Printf.sprintf "Delete(%d)" k
       | Find(k,_) -> Printf.sprintf "Find(%d)" k
       | Evictees es -> Printf.sprintf "Evictees(len=%d)" (List.length es)
+      | Sync _ -> "Sync"
 
 end
 

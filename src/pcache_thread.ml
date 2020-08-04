@@ -8,6 +8,10 @@
 open Kv_intf
 open Kv_config_profilers
 
+(* $(CONFIG("pcache_thread.ml: dont_log")) *)
+let dont_log = true
+
+
 module P = Pvt_pcache_with_blocks_limit
 
 module type S = sig
@@ -39,9 +43,8 @@ module Make(S:S) = struct
     type nonrec pcache_ops = (k,v,blk_id,kvop_map,lwt) pcache_ops
     type nonrec pcache_state = (blk_id,kvop_map) Pcache_intf.pcache_state
 
-    let file = "pct"
-
     let [mk1;mk2;mk3;mk4] = 
+      let file = "pct" in
       ["1" ;"2" ;"3" ;"4"]
       |> List.map (fun s -> file^"_"^s)
       |> List.map intern
@@ -63,7 +66,8 @@ module Make(S:S) = struct
       event_ops.ev_wait ev
 
     let bt_handle_detach (detach_info:('k,'v,'blk_id,'kvop_map)Detach_info.t) =
-      Printf.printf "bt_handle_detach start\n%!";
+      assert(dont_log || (
+          Printf.printf "%s: bt_handle_detach start\n%!" __FILE__; true));
       let kv_ops = detach_info.past_map |> kvop_map_ops.bindings |> List.map snd in
       mark mk2; 
       q_pc_bt#enqueue
@@ -83,7 +87,7 @@ module Make(S:S) = struct
 
     let raw_pcache_ops = pcache_ops
 
-    let pcache_ops = 
+    let map_ops_fidi = 
       P.make_ops
         ~monad_ops
         ~pcache_ops:raw_pcache_ops
@@ -101,10 +105,10 @@ module Make(S:S) = struct
           | kvop::es -> 
             Kvop.(match kvop with
             | Insert (k,v) -> 
-              pcache_ops.insert k v >>= fun () ->
+              map_ops_fidi.insert k v >>= fun () ->
               loop es
             | Delete k -> 
-              pcache_ops.delete k >>= fun () ->
+              map_ops_fidi.delete k >>= fun () ->
               loop es)
         in
         loop
@@ -125,17 +129,17 @@ module Make(S:S) = struct
         match msg with
         | Insert (k,v,callback) ->
           incr pcache_op_count;
-          pcache_ops.insert k v >>= fun () -> 
+          map_ops_fidi.insert k v >>= fun () -> 
           async (fun () -> callback ()) >>= fun () ->
           read_and_dispatch ()
         | Delete (k,callback) ->
           incr pcache_op_count;
-          pcache_ops.delete k >>= fun () ->
+          map_ops_fidi.delete k >>= fun () ->
           async (fun () -> callback ()) >>= fun () ->
           read_and_dispatch ()
         | Find (k,callback) -> 
           incr pcache_op_count;
-          pcache_ops.find k >>= fun v ->
+          map_ops_fidi.find k >>= fun v ->
           async (fun () -> callback v) >>= fun () ->
           read_and_dispatch ()
         | Evictees es -> 
@@ -143,6 +147,13 @@ module Make(S:S) = struct
           mark mk4;
           loop_evictees es >>= fun () ->
           read_and_dispatch ()
+        | Sync callback -> 
+          assert(dont_log || (
+              Printf.printf "%s: pcache received sync\n%!" __FILE__; true));
+          pcache_op_count:=!pcache_op_count + 1;
+          pcache_ops.pcache_sync () >>= fun () ->
+          callback ()
+          
       in
       read_and_dispatch ()
 

@@ -330,6 +330,9 @@ module Test() = struct
     end
   let count = 1000
 
+  (* $(CONFIG("kv_store_with_lru.ml: dont_log")) *)
+  let dont_log = true
+
   let test () = 
     blk_devs#lwt_open_file ~fn:"kv.store" ~create:true ~trunc:true >>= fun bd ->
     let blk_dev_ops=bd#blk_dev_ops in
@@ -366,7 +369,7 @@ module Test() = struct
         match n >= count with
         | true -> return ()
         | false -> 
-          Printf.printf "%s: inserting %d\n%!" __FILE__ n;
+          assert(dont_log || (Printf.printf "%s: inserting %d\n%!" __FILE__ n; true));
           (* FIXME mt_insert should take an optional persist mode *)
           mt_insert n (2*n) >>= fun () ->
           k (n+1)) >>= fun () ->
@@ -374,16 +377,14 @@ module Test() = struct
        (GC may not be effective?) *)
     Printf.printf "%s: syncing keys\n%!" __FILE__;
     mt_sync_all_keys () >>= fun () ->
-    Printf.printf "%s: syncing pcache\n%!" __FILE__;
-    kv_store#pcache_ops.Pcache_ops.pcache_sync () >>= fun () ->
-    (* FIXME add a sync to kv which calls the Lru, pcache (not btree- it is uncached) *)
-    (* Writing root *)
+    (* NOTE this should also result in a sync on the pcache *)
     
     (* root_man#write_origin ~blk_id:(B.of_int 0) ~origin:Root_manager.{} *)
     Printf.printf "%s: closing\n%!" __FILE__;
     fl#close () >>= fun () ->
-    Printf.printf "%s: pausing\n%!" __FILE__;
-    Tjr_monad.With_lwt.(from_lwt @@ sleep 2.0) >>= fun () ->
+    (* Printf.printf "%s: pausing\n%!" __FILE__; *)
+    (* NOTE this shouldn't be necessary if the sync_all_keys blocks till complete *)
+    (* Tjr_monad.With_lwt.(from_lwt @@ sleep 2.0) >>= fun () -> *)
     (* FIXME expose pcache ops and btree ops in kv_store *)
     (* bd#close () >>= fun () -> *)
     let blk_id = kv_store#origin in
@@ -395,7 +396,10 @@ module Test() = struct
     let plf = plist_factory#with_blk_dev_ops ~blk_dev_ops ~barrier in
     
     plf#init#read_from_hd origin.pcache_origin.hd >>= fun xs -> 
-    xs |> List.map (fun (xs,nxt) -> xs) |> List.concat |> List.map Kvop.ii_op2s |> String.concat "," |> fun s -> Printf.printf "\n%s: plist is %s\n\n%!" __FILE__ s;
+    assert(dont_log || (
+        xs |> List.map (fun (xs,nxt) -> xs) |> List.concat |> 
+        List.map Kvop.ii_op2s |> String.concat "," |> fun s -> 
+        Printf.printf "\n%s: plist is %s\n\n%!" __FILE__ s; true));
 
     kv#restore blk_id >>= fun kv2 -> 
     kv2#btree_thread#start_btree_thread () >>= fun () ->
@@ -406,7 +410,8 @@ module Test() = struct
         match n >= count with
         | true -> return ()
         | false -> 
-          Printf.printf "%s: finding %d\n%!" __FILE__ n;
+          assert(dont_log || (
+              Printf.printf "%s: finding %d\n%!" __FILE__ n; true));
           (* FIXME mt_insert should take an optional persist mode *)
           kv2#lru_ops.mt_find n >>= fun v ->
           assert(
@@ -415,9 +420,19 @@ module Test() = struct
             match b1&&b2 with 
             | true -> true
             | false -> 
-              Printf.printf "%s: find did not return the correct result: %d %b %b\n%!" __FILE__ n b1 b2;
+              Printf.printf "%s: find did not return the correct result: %d %b %b\n%!" 
+                __FILE__ n b1 b2;
               false);
           k (n+1)) >>= fun () ->
+    (* $(FIXME("""before we close, we must ensure that all the
+       threads have become quiescent (see BUG 2020-08-04_10:48:30m
+       where something attempts to access the blk_dev after close);
+       this sleep seems to allow time for everything to quiesce, but
+       it would be better if we had some explicit way to do this eg
+       via a "sync_origin" from lry that traverses the entire suite of
+       components and finally writes the origin""")) *)
+    Tjr_monad.With_lwt.(from_lwt @@ sleep 0.5) >>= fun () -> 
+    (* NOTE we should also sync the freelist if this wasn't just test code *)
     bd#close () >>= fun () -> 
     return ()
 
