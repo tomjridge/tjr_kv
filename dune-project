@@ -15,10 +15,8 @@
  (synopsis "A Key-Value store for OCaml (part of ImpFS)")
  (depends 
   tjr_btree
-  tjr_btree_examples
   tjr_lru_cache
   tjr_mem_queue
   tjr_pcache 
-  tjr_pcache_example
 ))
 
