@@ -9,11 +9,9 @@ bug-reports: "https://github.com/tomjridge/tjr_kv/issues"
 depends: [
   "dune" {>= "2.0"}
   "tjr_btree"
-  "tjr_btree_examples"
   "tjr_lru_cache"
   "tjr_mem_queue"
   "tjr_pcache"
-  "tjr_pcache_example"
 ]
 build: [
   ["dune" "subst"] {pinned}
