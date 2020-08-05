@@ -27,8 +27,7 @@ The easiest way to build is to look at the Dockerfile and copy the relevant RUN 
 
 ## Quick links
 
-* For OCamldoc, see <https://tomjridge.github.io/ocamldocs/>
-* Travis CI builds using docker https://travis-ci.org/github/tomjridge/tjr_kv
+* For OCamldoc, Travis CI builds etc, see <https://tomjridge.github.io/ocamldocs/>
 
 
 
