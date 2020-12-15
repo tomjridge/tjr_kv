@@ -136,7 +136,7 @@ module Make(S:S) = struct
       freelist_ops.blk_alloc () >>= fun b_empty_btree ->
       btree_factory#write_empty_leaf ~blk_dev_ops ~blk_id:b_empty_btree >>= fun () ->
       btree_factory#uncached
-        ~blk_dev_ops ~blk_alloc ~init_btree_root:b_empty_btree |> fun btree_o ->
+        ~blk_dev_ops ~blk_alloc ~btree_root:(`A b_empty_btree) |> fun btree_o ->
 
       (* then pcache *)
       pc_with#create () >>= fun pcache_ops ->
@@ -202,7 +202,7 @@ module Make(S:S) = struct
 
       (* btree *)
       btree_factory#uncached
-        ~blk_dev_ops ~blk_alloc ~init_btree_root:origin.btree_root |> fun btree_o ->
+        ~blk_dev_ops ~blk_alloc ~btree_root:(`A origin.btree_root) |> fun btree_o ->
 
       (* then pcache *)
       pc_with#restore ~hd:origin.pcache_origin.hd >>= fun pcache_ops ->
