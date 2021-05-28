@@ -66,13 +66,13 @@ module type S = sig
 
   type k
   type v
-  type buf = ba_buf
-  type blk = ba_buf
+  type buf = Shared_ctxt.buf
+  type blk = Shared_ctxt.blk
   type blk_id = Shared_ctxt.r
   type r = Shared_ctxt.r
 
   type kvop_map
-  val pcache_factory : (k, v, r, buf, kvop_map, t) pcache_factory
+  val pcache_factory : (k, v, r, blk, buf, kvop_map, t) pcache_factory
 
   type leaf
   type node
@@ -298,14 +298,14 @@ module Examples = struct
       type leaf = Tjr_btree.Make_6.Examples.Int_int.leaf
       type dnode = (node, leaf) Isa_btree.dnode
       type ls = Tjr_btree.Make_6.Examples.Int_int.ls
-      type blk = Tjr_fs_shared.ba_buf
+      type blk = Shared_ctxt.blk
       type wbc = Tjr_btree.Make_6.Examples.Int_int.wbc
       let btree_factory = Tjr_btree.btree_examples#int_int_factory
 
       type lru = Tjr_lru_cache.Lru_examples.Int_int.lru
       let lru_factory = Tjr_lru_cache.Lru_examples.Int_int.lru_factory
                           
-      let root_manager = Root_manager.root_managers#for_lwt_ba_buf
+      let root_manager = Root_manager.root_managers#for_lwt_buf
     end
 
     module M = Make(S2)
@@ -336,7 +336,7 @@ module Test() = struct
   let test () = 
     blk_devs#lwt_open_file ~fn:"kv.store" ~create:true ~trunc:true >>= fun bd ->
     let blk_dev_ops=bd#blk_dev_ops in
-    let root_man = Root_manager.root_managers#for_lwt_ba_buf#with_ ~blk_dev_ops in
+    let root_man = Root_manager.root_managers#for_lwt_buf#with_ ~blk_dev_ops in
     (* FIXME we should just have create and restore taking a fn *)
     shared_freelist#with_ ~fn:"freelist.store" |> fun fl -> 
     fl#create ~min_free:(B.of_int 0) >>= fun fl -> 

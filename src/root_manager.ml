@@ -26,14 +26,15 @@ type ('blk_id,'blk,'t) root_manager = <
 
 (** Example root managers *)
 let root_managers = 
-  let for_lwt_ba_buf : ('blk_id,_,_) root_manager = 
+  let for_lwt_buf : ('blk_id,_,_) root_manager = 
     let with_ ~blk_dev_ops = 
       let read_origin blk_id = 
         blk_dev_ops.read ~blk_id >>= fun blk -> 
-        M.unmarshal blk |> return
+        blk |> blk_ops.blk_to_buf |> (fun buf -> buf.ba_buf) |> M.unmarshal |> return
       in
       let write_origin ~blk_id ~origin = 
-        origin |> M.marshal |> fun blk -> 
+        origin |> M.marshal |> fun ba_buf -> 
+        let blk = {ba_buf;is_valid=true} |> blk_ops.buf_to_blk in
         blk_dev_ops.write ~blk_id ~blk
       in
       object
@@ -46,7 +47,7 @@ let root_managers =
     end
   in
   object
-    method for_lwt_ba_buf=for_lwt_ba_buf
+    method for_lwt_buf=for_lwt_buf
   end
 
 
