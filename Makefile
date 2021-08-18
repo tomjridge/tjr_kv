@@ -18,4 +18,4 @@ run_tests:
 
 # for auto-completion of Makefile target
 clean::
-	rm *.store
+	rm -f *.store
